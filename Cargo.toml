@@ -1,0 +1,9 @@
+[package]
+name = "cptio"
+version = "0.1.0"
+authors = ["cssivision <cssivision@gmail.com>"]
+edition = "2018"
+
+[dependencies]
+slab = "0.4"
+io-uring = "0.4"
