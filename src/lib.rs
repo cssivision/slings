@@ -1,5 +1,7 @@
 use std::io;
+use std::mem::transmute;
 use std::os::unix::io::RawFd;
+use std::panic;
 use std::sync::{Arc, Mutex};
 use std::task::Waker;
 use std::thread;
@@ -13,6 +15,9 @@ use io_uring::{
 };
 use once_cell::sync::Lazy;
 use slab::Slab;
+
+const MAX_MESSAGE_LEN: usize = 2048;
+const MAX_CONNECTIONS: usize = 4096;
 
 #[derive(Debug)]
 enum Action {
@@ -58,8 +63,7 @@ struct AcceptAction {
 struct Completion {
     ring: concurrent::IoUring,
     actions: Mutex<Slab<Arc<Action>>>,
-    bufpool: Mutex<Slab<Box<[u8]>>>,
-    free_bufs: Vec<usize>,
+    buffers: Vec<Vec<u8>>,
 }
 
 impl Completion {
@@ -71,15 +75,23 @@ impl Completion {
                 loop {}
             });
 
-            Completion {
-                ring: IoUring::new(256).expect("init io uring fail").concurrent(),
+            let ring = IoUring::new(256).expect("init io uring fail").concurrent();
+
+            let mut c = Completion {
+                ring,
                 actions: Mutex::new(Slab::new()),
-                bufpool: Mutex::new(Slab::new()),
-                free_bufs: Vec::new(),
-            }
+                buffers: vec![vec![0u8; MAX_MESSAGE_LEN]; MAX_CONNECTIONS],
+            };
+
+            c.setup();
+            c
         });
 
         &COMPLETION
+    }
+
+    fn setup(&mut self) {
+        let p: *mut u8 = unsafe { transmute::<*mut Vec<u8>, *mut u8>(self.buffers.as_mut_ptr()) };
     }
 
     fn wait(&self) -> io::Result<()> {
@@ -99,6 +111,10 @@ impl Completion {
                 let action = actions.remove(key);
                 action.handle(&mut wakers, cqe);
             }
+        }
+
+        for waker in wakers {
+            let _ = panic::catch_unwind(|| waker.wake());
         }
 
         Ok(())
