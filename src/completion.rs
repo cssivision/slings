@@ -7,10 +7,11 @@ use std::sync::{Arc, Mutex};
 use std::task::Waker;
 use std::thread;
 
+use crate::action::Action;
 use crate::other;
 
 use io_uring::{
-    concurrent, cqueue,
+    concurrent,
     opcode::{self, types},
     squeue::Entry,
     IoUring,
@@ -20,51 +21,7 @@ use slab::Slab;
 
 const MAX_MSG_LEN: i32 = 2048;
 const BUFFERS_COUNT: u16 = 4096;
-const GROUP_ID: u16 = 1337;
-
-#[derive(Debug)]
-enum Action {
-    Accept {
-        inner: Mutex<AcceptAction>,
-    },
-    Read {
-        fd: RawFd,
-        buf_index: usize,
-        waker: Option<Waker>,
-    },
-    Write {
-        fd: RawFd,
-        buf_index: usize,
-        offset: usize,
-        len: usize,
-        waker: Option<Waker>,
-    },
-    ProvideBuf,
-}
-
-impl Action {
-    fn handle(&self, wakers: &mut Vec<Waker>, cqe: cqueue::Entry) {
-        match self {
-            Action::Accept { inner } => {
-                let mut action = inner.lock().unwrap();
-                if let Some(w) = action.waker.take() {
-                    wakers.push(w);
-                }
-
-                action.fd = Some(cqe.result());
-            }
-            _ => {}
-        }
-    }
-}
-
-#[derive(Debug)]
-struct AcceptAction {
-    waker: Option<Waker>,
-    fd: Option<i32>,
-    sockaddr: String,
-    socklen: u32,
-}
+const GROUP_ID: u16 = 1028;
 
 pub struct Completion {
     ring: concurrent::IoUring,
@@ -158,7 +115,7 @@ impl Completion {
 
             if actions.contains(key) {
                 let action = actions.remove(key);
-                action.handle(&mut wakers, cqe);
+                action.trigger(&mut wakers, cqe);
             }
         }
 
@@ -182,5 +139,10 @@ impl Completion {
 
         self.ring.submit()?;
         Ok(())
+    }
+
+    fn insert(&self, action: Action) -> usize {
+        let mut actions = self.actions.lock().unwrap();
+        actions.insert(Arc::new(action))
     }
 }
