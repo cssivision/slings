@@ -7,17 +7,13 @@ use std::task::Waker;
 use std::thread;
 
 use futures::future::poll_fn;
-use io_uring::{
-    concurrent, cqueue,
-    opcode::{self, types},
-    squeue::Entry,
-    IoUring,
-};
+use io_uring::{concurrent, cqueue, opcode, squeue::Entry, IoUring};
 use once_cell::sync::Lazy;
 use slab::Slab;
 
-const MAX_MESSAGE_LEN: usize = 2048;
-const MAX_CONNECTIONS: usize = 4096;
+const MAX_MSG_LEN: i32 = 2048;
+const BUFFERS_COUNT: u16 = 4096;
+const GROUP_ID: u16 = 1337;
 
 #[derive(Debug)]
 enum Action {
@@ -36,6 +32,7 @@ enum Action {
         len: usize,
         waker: Option<Waker>,
     },
+    ProvideBuf,
 }
 
 impl Action {
@@ -75,23 +72,59 @@ impl Completion {
                 loop {}
             });
 
-            let ring = IoUring::new(256).expect("init io uring fail").concurrent();
+            let ring = IoUring::new(256).expect("init io uring fail");
 
+            // check if IORING_FEAT_FAST_POLL is supported
+            if !ring.params().is_feature_fast_poll() {
+                panic!("IORING_FEAT_FAST_POLL not available in the kernel");
+            }
+
+            // check if buffer selection is supported
+            let mut probe = io_uring::Probe::new();
+            ring.submitter().register_probe(&mut probe).unwrap();
+            if !probe.is_supported(opcode::ProvideBuffers::CODE) {
+                panic!("buffer selection not supported");
+            }
+
+            let ring = ring.concurrent();
             let mut c = Completion {
                 ring,
                 actions: Mutex::new(Slab::new()),
-                buffers: vec![vec![0u8; MAX_MESSAGE_LEN]; MAX_CONNECTIONS],
+                buffers: vec![vec![0u8; MAX_MSG_LEN as usize]; BUFFERS_COUNT as usize],
             };
 
-            c.setup();
+            c.setup().unwrap();
             c
         });
 
         &COMPLETION
     }
 
-    fn setup(&mut self) {
-        let p: *mut u8 = unsafe { transmute::<*mut Vec<u8>, *mut u8>(self.buffers.as_mut_ptr()) };
+    fn setup(&mut self) -> io::Result<()> {
+        let buffers: *mut u8 =
+            unsafe { transmute::<*mut Vec<u8>, *mut u8>(self.buffers.as_mut_ptr()) };
+
+        let entry =
+            opcode::ProvideBuffers::new(buffers, MAX_MSG_LEN, BUFFERS_COUNT, GROUP_ID, 0).build();
+
+        let sq = self.ring.submission();
+        unsafe {
+            sq.push(entry)
+                .map_err(|_| other("push provide_buffers entry fail"))?;
+        }
+
+        self.ring.submit_and_wait(1)?;
+        if let Some(cqe) = self.ring.completion().pop() {
+            let ret = cqe.result();
+            if ret < 0 {
+                return Err(other(&format!(
+                    "provide_buffers submit error, ret: {}",
+                    ret
+                )));
+            }
+        }
+
+        Ok(())
     }
 
     fn wait(&self) -> io::Result<()> {
