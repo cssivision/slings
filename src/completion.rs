@@ -1,21 +1,13 @@
 use std::io;
 use std::mem::transmute;
-use std::os::unix::io::RawFd;
 use std::panic;
-use std::ptr;
 use std::sync::{Arc, Mutex};
-use std::task::Waker;
 use std::thread;
 
 use crate::action::Action;
 use crate::other;
 
-use io_uring::{
-    concurrent,
-    opcode::{self, types},
-    squeue::Entry,
-    IoUring,
-};
+use io_uring::{concurrent, opcode, squeue::Entry, IoUring};
 use once_cell::sync::Lazy;
 use slab::Slab;
 
@@ -141,8 +133,8 @@ impl Completion {
         Ok(())
     }
 
-    fn insert(&self, action: Action) -> usize {
+    pub fn insert(&self, action: Arc<Action>) -> usize {
         let mut actions = self.actions.lock().unwrap();
-        actions.insert(Arc::new(action))
+        actions.insert(action)
     }
 }

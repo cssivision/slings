@@ -1,4 +1,5 @@
 use std::os::unix::io::RawFd;
+use std::sync::Arc;
 use std::sync::Mutex;
 use std::task::Waker;
 
@@ -8,10 +9,9 @@ mod accept;
 
 use accept::AcceptAction;
 
-#[derive(Debug)]
 pub enum Action {
     Accept {
-        inner: Mutex<AcceptAction>,
+        inner: Arc<Mutex<AcceptAction>>,
     },
     Read {
         fd: RawFd,
@@ -32,7 +32,9 @@ impl Action {
     pub fn trigger(&self, wakers: &mut Vec<Waker>, cqe: cqueue::Entry) {
         match self {
             Action::Accept { inner } => {
+                let ret = cqe.result();
                 let mut action = inner.lock().unwrap();
+                action.fd = Some(ret);
                 if let Some(w) = action.waker.take() {
                     wakers.push(w);
                 }
