@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::io;
+use std::mem::transmute;
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
@@ -15,7 +16,7 @@ use nix::sys::socket::InetAddr;
 
 pub struct AcceptAction {
     pub waker: Option<Waker>,
-    pub fd: Option<i32>,
+    pub ret: Option<io::Result<i32>>,
     pub sockaddr: Option<libc::sockaddr>,
 }
 
@@ -26,9 +27,17 @@ pub struct Accept {
 impl Accept {
     fn poll_accept(&self, cx: &mut Context) -> Poll<io::Result<(RawFd, SocketAddr)>> {
         let mut action = self.action.lock().unwrap();
-        if let Some(fd) = action.fd {
-            if let Some(sockaddr) = action.sockaddr.take() {
-                return Poll::Ready(Ok((fd, InetAddr::V4(to_sockaddr_in(sockaddr)).to_std())));
+        if let Some(ret) = action.ret.take() {
+            match ret {
+                Ok(ret) => {
+                    if let Some(sockaddr) = action.sockaddr.take() {
+                        return Poll::Ready(Ok((
+                            ret,
+                            InetAddr::V4(*to_sockaddr_in(sockaddr)).to_std(),
+                        )));
+                    }
+                }
+                Err(e) => return Poll::Ready(Err(e)),
             }
         }
 
@@ -40,26 +49,12 @@ impl Accept {
     }
 }
 
-fn to_sockaddr_in(sockaddr: libc::sockaddr) -> libc::sockaddr_in {
-    let mut sin_zero: [u8; 8] = Default::default();
-    sin_zero.copy_from_slice(
-        &sockaddr.sa_data[6..14]
-            .to_vec()
-            .iter()
-            .map(|v| *v as u8)
-            .collect::<Vec<u8>>(),
-    );
+fn to_sockaddr_in(sockaddr: libc::sockaddr) -> Box<libc::sockaddr_in> {
+    let sockaddr = Box::into_raw(Box::new(sockaddr));
 
-    libc::sockaddr_in {
-        sin_family: sockaddr.sa_family,
-        sin_port: (sockaddr.sa_data[0] as u16) << 8 | sockaddr.sa_data[1] as u16,
-        sin_addr: libc::in_addr {
-            s_addr: (sockaddr.sa_data[2] as u32) << 24
-                | (sockaddr.sa_data[3] as u32) << 16
-                | (sockaddr.sa_data[4] as u32) << 8
-                | (sockaddr.sa_data[5] as u32),
-        },
-        sin_zero: sin_zero,
+    unsafe {
+        let sockaddr_in = transmute::<*mut libc::sockaddr, *mut libc::sockaddr_in>(sockaddr);
+        Box::from_raw(sockaddr_in)
     }
 }
 
@@ -74,7 +69,7 @@ pub fn accept(fd: RawFd) -> io::Result<Accept> {
     let accept_action = Arc::new(Mutex::new(AcceptAction {
         sockaddr: Some(sockaddr),
         waker: None,
-        fd: None,
+        ret: None,
     }));
 
     let action = Action::Accept {

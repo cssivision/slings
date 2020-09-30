@@ -7,6 +7,7 @@ use io_uring::cqueue;
 
 mod accept;
 
+use crate::other;
 use accept::AcceptAction;
 
 pub enum Action {
@@ -32,14 +33,17 @@ impl Action {
     pub fn trigger(&self, wakers: &mut Vec<Waker>, cqe: cqueue::Entry) {
         match self {
             Action::Accept { inner } => {
-                let ret = cqe.result();
                 let mut action = inner.lock().unwrap();
-                action.fd = Some(ret);
+                let ret = if cqe.result() >= 0 {
+                    Ok(cqe.result())
+                } else {
+                    Err(other(&format!("accept action ret: {}", cqe.result())))
+                };
+
+                action.ret = Some(ret);
                 if let Some(w) = action.waker.take() {
                     wakers.push(w);
                 }
-
-                action.fd = Some(cqe.result());
             }
             _ => {}
         }
