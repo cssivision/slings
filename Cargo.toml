@@ -1,5 +1,5 @@
 [package]
-name = "kask"
+name = "slings"
 version = "0.1.0"
 authors = ["cssivision <cssivision@gmail.com>"]
 edition = "2018"
