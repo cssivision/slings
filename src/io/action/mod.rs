@@ -7,6 +7,8 @@ use io_uring::cqueue;
 
 mod accept;
 
+pub use accept::accept;
+
 use crate::other;
 use accept::AcceptAction;
 

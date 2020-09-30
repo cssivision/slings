@@ -9,7 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 use super::Action;
-use crate::completion::Completion;
+use crate::io::completion::Completion;
+use crate::other;
 
 use io_uring::opcode::{self, types};
 use nix::sys::socket::InetAddr;
@@ -17,7 +18,7 @@ use nix::sys::socket::InetAddr;
 pub struct AcceptAction {
     pub waker: Option<Waker>,
     pub ret: Option<io::Result<i32>>,
-    pub sockaddr: Option<libc::sockaddr>,
+    pub sockaddr: Option<Box<libc::sockaddr>>,
 }
 
 pub struct Accept {
@@ -36,6 +37,8 @@ impl Accept {
                             InetAddr::V4(*to_sockaddr_in(sockaddr)).to_std(),
                         )));
                     }
+
+                    return Poll::Ready(Err(other("invalid sockaddr")));
                 }
                 Err(e) => return Poll::Ready(Err(e)),
             }
@@ -49,25 +52,24 @@ impl Accept {
     }
 }
 
-fn to_sockaddr_in(sockaddr: libc::sockaddr) -> Box<libc::sockaddr_in> {
-    let sockaddr = Box::into_raw(Box::new(sockaddr));
-
+fn to_sockaddr_in(sockaddr: Box<libc::sockaddr>) -> Box<libc::sockaddr_in> {
     unsafe {
-        let sockaddr_in = transmute::<*mut libc::sockaddr, *mut libc::sockaddr_in>(sockaddr);
+        let sockaddr_in =
+            transmute::<*mut libc::sockaddr, *mut libc::sockaddr_in>(Box::into_raw(sockaddr));
         Box::from_raw(sockaddr_in)
     }
 }
 
 pub fn accept(fd: RawFd) -> io::Result<Accept> {
-    let mut sockaddr = libc::sockaddr {
+    let sockaddr = Box::into_raw(Box::new(libc::sockaddr {
         sa_family: 0,
         sa_data: [0i8; 14],
-    };
+    }));
 
-    let entry = opcode::Accept::new(types::Fd(fd), &mut sockaddr, ptr::null_mut()).build();
+    let entry = opcode::Accept::new(types::Fd(fd), sockaddr, ptr::null_mut()).build();
 
     let accept_action = Arc::new(Mutex::new(AcceptAction {
-        sockaddr: Some(sockaddr),
+        sockaddr: Some(unsafe { Box::from_raw(sockaddr) }),
         waker: None,
         ret: None,
     }));

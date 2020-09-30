@@ -4,7 +4,7 @@ use std::panic;
 use std::sync::{Arc, Mutex};
 use std::thread;
 
-use crate::action::Action;
+use super::action::Action;
 use crate::other;
 
 use io_uring::{concurrent, opcode, squeue::Entry, IoUring};
@@ -98,13 +98,7 @@ impl Completion {
         let mut actions = self.actions.lock().unwrap();
 
         while let Some(cqe) = self.ring.completion().pop() {
-            let ret = cqe.result();
-            if ret < 0 {
-                continue;
-            }
-
             let key = cqe.user_data() as usize;
-
             if actions.contains(key) {
                 let action = actions.remove(key);
                 action.trigger(&mut wakers, cqe);
@@ -130,6 +124,7 @@ impl Completion {
         }
 
         self.ring.submit()?;
+
         Ok(())
     }
 
