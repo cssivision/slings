@@ -1,16 +1,14 @@
 use std::future::Future;
-use std::io;
-use std::mem::transmute;
-use std::net::SocketAddr;
-use std::os::unix::io::RawFd;
+use std::io::{self, Error, ErrorKind};
+use std::mem;
+use std::net::{SocketAddr, TcpStream};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::pin::Pin;
-use std::ptr;
 use std::sync::{Arc, Mutex};
 use std::task::{Context, Poll, Waker};
 
 use super::Action;
 use crate::io::completion::Completion;
-use crate::other;
 
 use io_uring::opcode::{self, types};
 use nix::sys::socket::InetAddr;
@@ -18,7 +16,8 @@ use nix::sys::socket::InetAddr;
 pub struct AcceptAction {
     pub waker: Option<Waker>,
     pub ret: Option<io::Result<i32>>,
-    pub sockaddr: Option<Box<libc::sockaddr>>,
+    pub sockaddr: Box<libc::sockaddr_storage>,
+    pub socklen: u32,
 }
 
 pub struct Accept {
@@ -26,19 +25,15 @@ pub struct Accept {
 }
 
 impl Accept {
-    fn poll_accept(&self, cx: &mut Context) -> Poll<io::Result<(RawFd, SocketAddr)>> {
+    fn poll_accept(&self, cx: &mut Context) -> Poll<io::Result<(TcpStream, SocketAddr)>> {
         let mut action = self.action.lock().unwrap();
         if let Some(ret) = action.ret.take() {
             match ret {
                 Ok(ret) => {
-                    if let Some(sockaddr) = action.sockaddr.take() {
-                        return Poll::Ready(Ok((
-                            ret,
-                            InetAddr::V4(*to_sockaddr_in(sockaddr)).to_std(),
-                        )));
-                    }
-
-                    return Poll::Ready(Err(other("invalid sockaddr")));
+                    return Poll::Ready(Ok((
+                        unsafe { TcpStream::from_raw_fd(ret) },
+                        sockaddr_to_addr(&action.sockaddr, action.socklen as usize)?,
+                    )));
                 }
                 Err(e) => return Poll::Ready(Err(e)),
             }
@@ -52,24 +47,42 @@ impl Accept {
     }
 }
 
-fn to_sockaddr_in(sockaddr: Box<libc::sockaddr>) -> Box<libc::sockaddr_in> {
-    unsafe {
-        let sockaddr_in =
-            transmute::<*mut libc::sockaddr, *mut libc::sockaddr_in>(Box::into_raw(sockaddr));
-        Box::from_raw(sockaddr_in)
+fn sockaddr_to_addr(storage: &libc::sockaddr_storage, len: usize) -> io::Result<SocketAddr> {
+    match storage.ss_family as libc::c_int {
+        libc::AF_INET => {
+            assert!(len as usize >= mem::size_of::<libc::sockaddr_in>());
+            Ok(
+                InetAddr::V4(unsafe { *(storage as *const _ as *const libc::sockaddr_in) })
+                    .to_std(),
+            )
+        }
+        libc::AF_INET6 => {
+            assert!(len as usize >= mem::size_of::<libc::sockaddr_in6>());
+            Ok(
+                InetAddr::V6(unsafe { *(storage as *const _ as *const libc::sockaddr_in6) })
+                    .to_std(),
+            )
+        }
+        _ => Err(Error::new(ErrorKind::InvalidInput, "invalid argument")),
     }
 }
 
 pub fn accept(fd: RawFd) -> io::Result<Accept> {
-    let sockaddr = Box::into_raw(Box::new(libc::sockaddr {
-        sa_family: 0,
-        sa_data: [0i8; 14],
-    }));
+    let sockaddr: libc::sockaddr_storage = unsafe { mem::zeroed() };
+    let mut socklen = mem::size_of_val(&sockaddr) as libc::socklen_t;
 
-    let entry = opcode::Accept::new(types::Fd(fd), sockaddr, ptr::null_mut()).build();
+    let mut sockaddr = Box::new(sockaddr);
+
+    let entry = opcode::Accept::new(
+        types::Fd(fd),
+        &mut *sockaddr as *mut _ as *mut _,
+        &mut socklen,
+    )
+    .build();
 
     let accept_action = Arc::new(Mutex::new(AcceptAction {
-        sockaddr: Some(unsafe { Box::from_raw(sockaddr) }),
+        sockaddr,
+        socklen,
         waker: None,
         ret: None,
     }));
@@ -90,7 +103,7 @@ pub fn accept(fd: RawFd) -> io::Result<Accept> {
 }
 
 impl Future for Accept {
-    type Output = io::Result<(RawFd, SocketAddr)>;
+    type Output = io::Result<(TcpStream, SocketAddr)>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         self.poll_accept(cx)

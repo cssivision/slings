@@ -8,7 +8,7 @@ fn main() {
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         let listener = TcpListener::bind(addr).await.unwrap();
 
-        println!("start listening");
+        println!("server start listen on 127.0.0.1:8080");
 
         loop {
             let (_stream, addr) = listener.accept().await.unwrap();
