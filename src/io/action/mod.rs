@@ -49,6 +49,19 @@ impl Action {
                     wakers.push(w);
                 }
             }
+            Action::Read { inner } => {
+                let mut action = inner.lock().unwrap();
+                let ret = if cqe.result() >= 0 {
+                    Ok(cqe.result())
+                } else {
+                    Err(other(&format!("read action ret: {}", cqe.result())))
+                };
+
+                action.ret = Some(ret);
+                if let Some(w) = action.waker.take() {
+                    wakers.push(w);
+                }
+            }
             _ => {}
         }
     }

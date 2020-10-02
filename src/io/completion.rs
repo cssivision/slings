@@ -10,9 +10,9 @@ use io_uring::{concurrent, opcode, squeue::Entry, IoUring};
 use once_cell::sync::Lazy;
 use slab::Slab;
 
-const MAX_MSG_LEN: i32 = 2048;
+pub const MAX_MSG_LEN: i32 = 2048;
 const BUFFERS_COUNT: u16 = 4096;
-const GROUP_ID: u16 = 1028;
+pub const GROUP_ID: u16 = 1028;
 
 pub struct Completion {
     ring: concurrent::IoUring,
