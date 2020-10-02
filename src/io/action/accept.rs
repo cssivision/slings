@@ -80,26 +80,21 @@ pub fn accept(fd: RawFd) -> io::Result<Accept> {
     )
     .build();
 
-    let accept_action = Arc::new(Mutex::new(AcceptAction {
+    let action = Arc::new(Mutex::new(AcceptAction {
         sockaddr,
         socklen,
         waker: None,
         ret: None,
     }));
 
-    let action = Action::Accept {
-        inner: accept_action.clone(),
-    };
-
-    let action = Arc::new(action);
-    let key = Completion::get().insert(action.clone());
+    let key = Completion::get().insert(Arc::new(Action::Accept {
+        inner: action.clone(),
+    }));
 
     let entry = entry.user_data(key as _);
     Completion::get().submit(entry)?;
 
-    Ok(Accept {
-        action: accept_action,
-    })
+    Ok(Accept { action })
 }
 
 impl Future for Accept {
