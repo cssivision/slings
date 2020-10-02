@@ -21,6 +21,12 @@ pub struct Completion {
 }
 
 impl Completion {
+    pub fn get_data(&self, bid: usize, len: usize) -> Option<Vec<u8>> {
+        self.buffers
+            .get(bid)
+            .map(|v| v[..v.len().max(len)].to_vec())
+    }
+
     pub fn get() -> &'static Completion {
         static COMPLETION: Lazy<Completion> = Lazy::new(|| {
             thread::spawn(move || {

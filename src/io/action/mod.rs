@@ -58,6 +58,7 @@ impl Action {
                 };
 
                 action.ret = Some(ret);
+                action.flags = cqe.flags();
                 if let Some(w) = action.waker.take() {
                     wakers.push(w);
                 }

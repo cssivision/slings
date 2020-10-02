@@ -8,6 +8,7 @@ use std::task::{Context, Poll, Waker};
 
 use super::Action;
 use crate::io::completion::{Completion, GROUP_ID, MAX_MSG_LEN};
+use crate::other;
 
 use io_uring::opcode::{self, types};
 use io_uring::squeue::Flags;
@@ -15,6 +16,7 @@ use io_uring::squeue::Flags;
 pub struct ReadAction {
     pub ret: Option<io::Result<i32>>,
     pub waker: Option<Waker>,
+    pub flags: u32,
 }
 
 pub struct Read {
@@ -33,7 +35,23 @@ impl Read {
         let mut action = self.action.lock().unwrap();
         if let Some(ret) = action.ret.take() {
             match ret {
-                Ok(ret) => {}
+                Ok(ret) => {
+                    let n = ret as usize;
+                    if n == 0 {
+                        return Poll::Ready(Ok((vec![], n)));
+                    }
+
+                    let buf_index = action.flags >> 16;
+                    let data = Completion::get()
+                        .get_data(buf_index as usize, n)
+                        .unwrap_or_else(|| vec![]);
+
+                    if data.len() != n {
+                        return Poll::Ready(Err(other("data length invalid")));
+                    }
+
+                    return Poll::Ready(Ok((data, n)));
+                }
                 Err(e) => return Poll::Ready(Err(e)),
             }
         }
@@ -50,6 +68,7 @@ pub fn read(fd: RawFd) -> io::Result<Read> {
     let action = Arc::new(Mutex::new(ReadAction {
         waker: None,
         ret: None,
+        flags: 0,
     }));
 
     let key = Completion::get().insert(Arc::new(Action::Read {
