@@ -1,5 +1,4 @@
 use std::io;
-use std::mem::transmute;
 use std::panic;
 use std::sync::{Arc, Mutex};
 use std::thread;
@@ -66,8 +65,7 @@ impl Completion {
     }
 
     fn setup(&mut self) -> io::Result<()> {
-        let buffers: *mut u8 =
-            unsafe { transmute::<*mut Vec<u8>, *mut u8>(self.buffers.as_mut_ptr()) };
+        let buffers = self.buffers.as_mut_ptr() as *mut u8;
 
         let entry =
             opcode::ProvideBuffers::new(buffers, MAX_MSG_LEN, BUFFERS_COUNT, GROUP_ID, 0).build();
@@ -95,12 +93,11 @@ impl Completion {
     fn wait(&self) -> io::Result<()> {
         self.ring.submit_and_wait(1)?;
         let mut wakers = Vec::new();
-        let mut actions = self.actions.lock().unwrap();
+        let actions = self.actions.lock().unwrap();
 
         while let Some(cqe) = self.ring.completion().pop() {
             let key = cqe.user_data() as usize;
-            if actions.contains(key) {
-                let action = actions.remove(key);
+            if let Some(action) = actions.get(key) {
                 action.trigger(&mut wakers, cqe);
             }
         }
@@ -131,5 +128,10 @@ impl Completion {
     pub fn insert(&self, action: Arc<Action>) -> usize {
         let mut actions = self.actions.lock().unwrap();
         actions.insert(action)
+    }
+
+    pub fn remove(&self, key: usize) {
+        let mut actions = self.actions.lock().unwrap();
+        actions.remove(key);
     }
 }

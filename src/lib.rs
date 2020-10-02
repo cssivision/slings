@@ -29,6 +29,8 @@ pub mod net;
 pub mod parking;
 pub mod waker_fn;
 
+pub use blocking::block_on;
+
 fn other(msg: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::Other, msg)
 }

@@ -22,6 +22,12 @@ pub fn parker_and_waker() -> (Parker, Waker) {
     (parker, waker)
 }
 
+impl Default for Parker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub struct Parker {
     unparker: Unparker,
 }

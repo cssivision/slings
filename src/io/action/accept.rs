@@ -21,7 +21,14 @@ pub struct AcceptAction {
 }
 
 pub struct Accept {
+    key: usize,
     action: Arc<Mutex<AcceptAction>>,
+}
+
+impl Drop for Accept {
+    fn drop(&mut self) {
+        Completion::get().remove(self.key);
+    }
 }
 
 impl Accept {
@@ -94,7 +101,7 @@ pub fn accept(fd: RawFd) -> io::Result<Accept> {
     let entry = entry.user_data(key as _);
     Completion::get().submit(entry)?;
 
-    Ok(Accept { action })
+    Ok(Accept { key, action })
 }
 
 impl Future for Accept {

@@ -1,10 +1,9 @@
 use std::net::SocketAddr;
 
-use slings::blocking::block_on;
 use slings::net::TcpListener;
 
 fn main() {
-    block_on(async {
+    slings::block_on(async {
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         let listener = TcpListener::bind(addr).await.unwrap();
 

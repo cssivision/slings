@@ -6,20 +6,22 @@ use std::task::Waker;
 use io_uring::cqueue;
 
 mod accept;
+mod read;
+mod timeout;
+mod write;
 
 pub use accept::accept;
 
 use crate::other;
 use accept::AcceptAction;
+use read::ReadAction;
 
 pub enum Action {
     Accept {
         inner: Arc<Mutex<AcceptAction>>,
     },
     Read {
-        fd: RawFd,
-        buf_index: usize,
-        waker: Option<Waker>,
+        inner: Arc<Mutex<ReadAction>>,
     },
     Write {
         fd: RawFd,
