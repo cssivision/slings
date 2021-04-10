@@ -11,7 +11,7 @@ use once_cell::sync::Lazy;
 use slab::Slab;
 
 pub const MAX_MSG_LEN: i32 = 2048;
-const BUFFERS_COUNT: u16 = 4096;
+pub const BUFFERS_COUNT: u16 = 4096;
 pub const GROUP_ID: u16 = 1028;
 
 pub struct Completion {

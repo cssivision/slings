@@ -22,6 +22,8 @@ macro_rules! ready {
     };
 }
 
+use std::thread;
+
 pub mod blocking;
 pub mod executor;
 pub mod io;
@@ -30,7 +32,28 @@ pub mod parking;
 pub mod waker_fn;
 
 pub use blocking::block_on;
+use executor::Executor;
+
+pub use async_task::Task;
+use futures_util::future::Future;
+use once_cell::sync::Lazy;
 
 fn other(msg: &str) -> std::io::Error {
     std::io::Error::new(std::io::ErrorKind::Other, msg)
+}
+
+pub static EXECUTOR: Lazy<Executor> = Lazy::new(|| {
+    for _ in 0..num_cpus::get().max(1) {
+        thread::spawn(|| {
+            let ticker = EXECUTOR.ticker();
+
+            block_on(ticker.run());
+        });
+    }
+
+    Executor::new()
+});
+
+pub fn spawn<T: Send + 'static>(future: impl Future<Output = T> + Send + 'static) -> Task<T> {
+    EXECUTOR.spawn(future)
 }
