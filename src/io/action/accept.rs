@@ -10,7 +10,7 @@ use std::task::{Context, Poll, Waker};
 use super::Action;
 use crate::io::completion::Completion;
 
-use io_uring::opcode::{self, types};
+use io_uring::{opcode, types};
 use nix::sys::socket::InetAddr;
 
 pub struct AcceptAction {

@@ -6,7 +6,7 @@ use std::thread;
 use super::action::Action;
 use crate::other;
 
-use io_uring::{concurrent, opcode, squeue::Entry, IoUring};
+use io_uring::{opcode::ProvideBuffers, squeue::Entry, IoUring};
 use once_cell::sync::Lazy;
 use slab::Slab;
 
@@ -15,7 +15,7 @@ pub const BUFFERS_COUNT: u16 = 4096;
 pub const GROUP_ID: u16 = 1028;
 
 pub struct Completion {
-    ring: concurrent::IoUring,
+    ring: IoUring,
     actions: Mutex<Slab<Arc<Action>>>,
     buffers: Vec<Vec<u8>>,
 }
@@ -52,11 +52,10 @@ impl Completion {
             // check if buffer selection is supported
             let mut probe = io_uring::Probe::new();
             ring.submitter().register_probe(&mut probe).unwrap();
-            if !probe.is_supported(opcode::ProvideBuffers::CODE) {
+            if !probe.is_supported(ProvideBuffers::CODE) {
                 panic!("buffer selection not supported");
             }
 
-            let ring = ring.concurrent();
             let mut c = Completion {
                 ring,
                 actions: Mutex::new(Slab::new()),
@@ -72,18 +71,17 @@ impl Completion {
 
     fn setup(&mut self) -> io::Result<()> {
         let buffers = self.buffers.as_mut_ptr() as *mut u8;
+        let entry = ProvideBuffers::new(buffers, MAX_MSG_LEN, BUFFERS_COUNT, GROUP_ID, 0).build();
 
-        let entry =
-            opcode::ProvideBuffers::new(buffers, MAX_MSG_LEN, BUFFERS_COUNT, GROUP_ID, 0).build();
-
-        let sq = self.ring.submission();
         unsafe {
-            sq.push(entry)
+            self.ring
+                .submission()
+                .push(&entry)
                 .map_err(|_| other("push provide_buffers entry fail"))?;
         }
 
         self.ring.submit_and_wait(1)?;
-        if let Some(cqe) = self.ring.completion().pop() {
+        for cqe in self.ring.completion() {
             let ret = cqe.result();
             if ret < 0 {
                 return Err(other(&format!(
@@ -101,7 +99,7 @@ impl Completion {
         let mut wakers = Vec::new();
         let actions = self.actions.lock().unwrap();
 
-        while let Some(cqe) = self.ring.completion().pop() {
+        for cqe in self.ring.completion() {
             let key = cqe.user_data() as usize;
             if let Some(action) = actions.get(key) {
                 action.trigger(&mut wakers, cqe);
@@ -109,21 +107,21 @@ impl Completion {
         }
 
         for waker in wakers {
-            let _ = panic::catch_unwind(|| waker.wake());
+            waker.wake();
         }
 
         Ok(())
     }
 
     pub fn submit(&self, sqe: Entry) -> io::Result<()> {
-        let sq = self.ring.submission();
+        let mut sq = self.ring.submission();
 
         if sq.is_full() {
             self.ring.submit()?;
         }
 
         unsafe {
-            sq.push(sqe).map_err(|_| other("sq push fail"))?;
+            sq.push(&sqe).map_err(|_| other("sq push fail"))?;
         }
 
         self.ring.submit()?;

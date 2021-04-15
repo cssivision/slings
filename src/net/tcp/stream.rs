@@ -1,7 +1,7 @@
 use std::io;
 use std::net;
 use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use std::task::{Context, Poll};
 
 use crate::io::action;
 

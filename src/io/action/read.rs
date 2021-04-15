@@ -10,8 +10,7 @@ use super::Action;
 use crate::io::completion::{Completion, GROUP_ID, MAX_MSG_LEN};
 use crate::other;
 
-use io_uring::opcode::{self, types};
-use io_uring::squeue::Flags;
+use io_uring::{opcode, squeue::Flags, types};
 
 pub struct ReadAction {
     pub ret: Option<io::Result<i32>>,
