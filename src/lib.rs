@@ -34,10 +34,6 @@ pub use blocking::block_on;
 
 pub use async_task::Task;
 
-fn other(msg: &str) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::Other, msg)
-}
-
 pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
     local_executor::spawn(future)
 }

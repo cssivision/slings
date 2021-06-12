@@ -7,7 +7,6 @@ use super::action::Action;
 use crate::other;
 
 use io_uring::{opcode::ProvideBuffers, squeue::Entry, IoUring};
-use once_cell::sync::Lazy;
 use slab::Slab;
 
 pub const MAX_MSG_LEN: i32 = 2048;
@@ -28,45 +27,28 @@ impl Completion {
     }
 
     pub fn get() -> &'static Completion {
-        static COMPLETION: Lazy<Completion> = Lazy::new(|| {
-            thread::spawn(move || {
-                let completion = Completion::get();
+        let ring = IoUring::new(256).expect("init io uring fail");
 
-                loop {
-                    match completion.wait() {
-                        Ok(_) => {}
-                        Err(e) => {
-                            log::trace!("completion wait err: {:?}", e);
-                        }
-                    }
-                }
-            });
+        // check if IORING_FEAT_FAST_POLL is supported
+        if !ring.params().is_feature_fast_poll() {
+            panic!("IORING_FEAT_FAST_POLL not supported");
+        }
 
-            let ring = IoUring::new(256).expect("init io uring fail");
+        // check if buffer selection is supported
+        let mut probe = io_uring::Probe::new();
+        ring.submitter().register_probe(&mut probe).unwrap();
+        if !probe.is_supported(ProvideBuffers::CODE) {
+            panic!("buffer selection not supported");
+        }
 
-            // check if IORING_FEAT_FAST_POLL is supported
-            if !ring.params().is_feature_fast_poll() {
-                panic!("IORING_FEAT_FAST_POLL not supported");
-            }
+        let mut c = Completion {
+            ring,
+            actions: Mutex::new(Slab::new()),
+            buffers: vec![vec![0u8; MAX_MSG_LEN as usize]; BUFFERS_COUNT as usize],
+        };
 
-            // check if buffer selection is supported
-            let mut probe = io_uring::Probe::new();
-            ring.submitter().register_probe(&mut probe).unwrap();
-            if !probe.is_supported(ProvideBuffers::CODE) {
-                panic!("buffer selection not supported");
-            }
-
-            let mut c = Completion {
-                ring,
-                actions: Mutex::new(Slab::new()),
-                buffers: vec![vec![0u8; MAX_MSG_LEN as usize]; BUFFERS_COUNT as usize],
-            };
-
-            c.setup().unwrap();
-            c
-        });
-
-        &COMPLETION
+        c.setup().unwrap();
+        c
     }
 
     fn setup(&mut self) -> io::Result<()> {
