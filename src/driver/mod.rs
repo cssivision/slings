@@ -71,4 +71,16 @@ impl Driver {
         }
         Ok(())
     }
+
+    pub fn submit(&self, sqe: Entry) -> io::Result<()> {
+        let mut sq = self.ring.submission();
+        if sq.is_full() {
+            self.ring.submit()?;
+        }
+        unsafe {
+            sq.push(&sqe).map_err(|_| other("sq push fail"))?;
+        }
+        self.ring.submit()?;
+        Ok(())
+    }
 }
