@@ -2,10 +2,13 @@ use std::io;
 use std::panic;
 
 use io_uring::{opcode::ProvideBuffers, squeue::Entry, IoUring};
+use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
 mod action;
 use action::Action;
+
+scoped_thread_local!(static CURRENT: Driver);
 
 pub struct Driver {
     ring: IoUring,
