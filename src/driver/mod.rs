@@ -42,7 +42,7 @@ impl Driver {
         Ok(driver)
     }
 
-    fn wait(&mut self) -> io::Result<()> {
+    fn wait(&self) -> io::Result<()> {
         self.ring.submit_and_wait(1)?;
         for cqe in self.ring.completion() {
             let key = cqe.user_data() as usize;
@@ -50,6 +50,10 @@ impl Driver {
         }
 
         Ok(())
+    }
+
+    pub fn with<T>(&self, f: impl FnOnce() -> T) -> T {
+        CURRENT.set(&self, f)
     }
 
     fn provide_buffers(&mut self) -> io::Result<()> {
@@ -76,12 +80,14 @@ impl Driver {
     }
 
     pub fn submit(&self, sqe: Entry) -> io::Result<()> {
-        let mut sq = self.ring.submission();
-        if sq.is_full() {
+        if self.ring.submission().is_full() {
             self.ring.submit()?;
         }
         unsafe {
-            sq.push(&sqe).map_err(|_| other("sq push fail"))?;
+            self.ring
+                .submission()
+                .push(&sqe)
+                .map_err(|_| other("sq push fail"))?;
         }
         self.ring.submit()?;
         Ok(())
