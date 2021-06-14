@@ -12,19 +12,17 @@ pub(crate) struct Accept {
 
 impl Action<Accept> {
     pub(crate) fn accept(fd: RawFd) -> io::Result<Action<Accept>> {
-        let addr: MaybeUninit<libc::sockaddr_storage> = MaybeUninit::uninit();
         let mut accept = Accept {
-            addr: Box::new(addr),
+            addr: Box::new(MaybeUninit::uninit()),
         };
         let mut length = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
         let entry = opcode::Accept::new(
             types::Fd(fd),
-            accept.addr.as_mut_ptr() as *mut _ as *mut _,
+            accept.addr.as_mut_ptr() as *mut _,
             &mut length,
         )
         .flags(libc::SOCK_CLOEXEC)
         .build();
-
         Action::submit(accept, entry)
     }
 }
