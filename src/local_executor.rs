@@ -60,7 +60,7 @@ impl LocalExecutor {
         }
     }
 
-    fn register(&self, waker: &Waker) {
+    pub(crate) fn register(&self, waker: &Waker) {
         *self.waker.borrow_mut() = Some(waker.clone());
     }
 
@@ -79,7 +79,7 @@ impl LocalExecutor {
         })
     }
 
-    fn with<T>(&self, f: impl FnOnce() -> T) -> T {
+    pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
         CURRENT.set(&self, f)
     }
 
