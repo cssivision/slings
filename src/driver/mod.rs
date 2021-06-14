@@ -1,14 +1,17 @@
 use std::cell::RefCell;
 use std::io;
+use std::mem;
 use std::panic;
 use std::rc::Rc;
+use std::task::Waker;
 
-use io_uring::{opcode::ProvideBuffers, squeue::Entry, IoUring};
+use io_uring::{cqueue, opcode::ProvideBuffers, squeue::Entry, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
-mod action;
-use action::Action;
+pub(crate) mod action;
+pub(crate) use action::Action;
+pub(crate) mod accept;
 
 scoped_thread_local!(static CURRENT: Driver);
 
@@ -18,7 +21,7 @@ pub(crate) struct Driver {
 
 struct Inner {
     ring: IoUring,
-    actions: Slab<Action>,
+    actions: Slab<State>,
     buffers: Vec<u8>,
 }
 
@@ -60,7 +63,8 @@ impl Driver {
 
         for cqe in cq {
             let key = cqe.user_data() as usize;
-            if let Some(action) = inner.actions.get(key) {}
+            let action = &mut inner.actions[key];
+            action.complete(cqe);
         }
 
         Ok(())
@@ -95,11 +99,16 @@ impl Driver {
         Ok(())
     }
 
-    pub(crate) fn submit(&self, sqe: Entry) -> io::Result<()> {
+    pub(crate) fn submit(&self, sqe: Entry) -> io::Result<u64> {
         let mut inner = self.inner.borrow_mut();
+        let inner = &mut *inner;
+        let entry = inner.actions.vacant_entry();
+        let key = entry.key() as u64;
+
         if inner.ring.submission().is_full() {
             inner.ring.submit()?;
         }
+        let sqe = sqe.user_data(key);
         unsafe {
             inner
                 .ring
@@ -108,6 +117,30 @@ impl Driver {
                 .expect("submit entry fail");
         }
         inner.ring.submit()?;
-        Ok(())
+        let state = State::Submitted;
+        entry.insert(state);
+        Ok(key)
+    }
+}
+
+pub enum State {
+    /// The operation has been submitted to uring and is currently in-flight
+    Submitted,
+    /// The submitter is waiting for the completion of the operation
+    Waiting(Waker),
+    /// The operation has completed.
+    Completed(cqueue::Entry),
+}
+
+impl State {
+    pub fn complete(&mut self, cqe: cqueue::Entry) {
+        match mem::replace(self, State::Submitted) {
+            State::Submitted => State::Completed(cqe),
+            State::Waiting(waker) => {
+                waker.wake();
+                State::Completed(cqe)
+            }
+            State::Completed(_) => unreachable!("invalid operation state"),
+        };
     }
 }

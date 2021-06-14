@@ -27,8 +27,9 @@ use std::future::Future;
 pub mod blocking;
 mod driver;
 pub mod local_executor;
+pub mod net;
 pub mod parking;
-mod runtime;
+pub mod runtime;
 pub mod waker_fn;
 
 pub use blocking::block_on;

@@ -1,11 +1,9 @@
 use std::cell::RefCell;
 use std::future::Future;
-use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use std::task::Waker;
 
 use async_task::{Runnable, Task};
 use concurrent_queue::ConcurrentQueue;
-use pin_project_lite::pin_project;
 use scoped_tls::scoped_thread_local;
 
 const MAX_TASKS_PER_TICK: usize = 64;
@@ -81,44 +79,5 @@ impl LocalExecutor {
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
         CURRENT.set(&self, f)
-    }
-
-    pub async fn run_until<F>(&self, future: F) -> F::Output
-    where
-        F: Future,
-    {
-        let run_until = RunUntil {
-            future,
-            local_executor: self,
-        };
-        run_until.await
-    }
-}
-
-pin_project! {
-    struct RunUntil<'a, F> {
-        local_executor: &'a LocalExecutor,
-        #[pin]
-        future: F,
-    }
-}
-
-impl<T: Future> Future for RunUntil<'_, T> {
-    type Output = T::Output;
-
-    fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        let me = self.project();
-        me.local_executor.with(|| {
-            me.local_executor.register(cx.waker());
-            if let Poll::Ready(output) = me.future.poll(cx) {
-                return Poll::Ready(output);
-            }
-            if me.local_executor.tick() {
-                // If `tick` returns `true`, we need to notify the local future again:
-                // there are still tasks remaining in the run queue.
-                cx.waker().wake_by_ref();
-            }
-            Poll::Pending
-        })
     }
 }

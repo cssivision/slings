@@ -6,13 +6,11 @@ edition = "2018"
 
 [dependencies]
 io-uring = { version = "0.5", features = ["unstable"] }
-libc = "0.2"
-log = "0.4"
+futures-util = { version = "0.3", features = ["io"] }
 concurrent-queue = "1.2"
 async-task = "4.0"
 parking_lot = "0.11"
-bytes = "0.5"
 scoped-tls = "1.0.0"
-pin-project-lite = "0.2"
 slab = "0.4"
-futures-util = "0.3"
+libc = "0.2"
+log = "0.4"
