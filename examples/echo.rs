@@ -12,8 +12,8 @@ fn main() -> io::Result<()> {
 
         println!("server start listen on 127.0.0.1:8080");
         loop {
-            listener.accept().await.unwrap();
-            println!("accept");
+            let (stream, addr) = listener.accept().await.unwrap();
+            println!("accept stream from addr: {:?}", addr);
         }
     });
     Ok(())

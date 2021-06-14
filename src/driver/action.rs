@@ -60,7 +60,7 @@ where
                 Poll::Ready(Completion {
                     action: me.action.take().unwrap(),
                     result: if cqe.result() >= 0 {
-                        Ok(cqe.result() as u32)
+                        Ok(cqe.result() as i32)
                     } else {
                         Err(io::Error::from_raw_os_error(-cqe.result()))
                     },
@@ -73,6 +73,6 @@ where
 
 pub(crate) struct Completion<T> {
     pub(crate) action: T,
-    pub(crate) result: io::Result<u32>,
+    pub(crate) result: io::Result<i32>,
     pub(crate) flags: u32,
 }
