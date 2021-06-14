@@ -123,6 +123,7 @@ impl Driver {
     }
 }
 
+#[derive(Debug)]
 pub enum State {
     /// The operation has been submitted to uring and is currently in-flight
     Submitted,
@@ -135,10 +136,12 @@ pub enum State {
 impl State {
     pub fn complete(&mut self, cqe: cqueue::Entry) {
         match mem::replace(self, State::Submitted) {
-            State::Submitted => State::Completed(cqe),
+            State::Submitted => {
+                *self = State::Completed(cqe);
+            }
             State::Waiting(waker) => {
+                *self = State::Completed(cqe);
                 waker.wake();
-                State::Completed(cqe)
             }
             State::Completed(_) => unreachable!("invalid operation state"),
         };
