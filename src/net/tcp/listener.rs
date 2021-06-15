@@ -3,7 +3,6 @@ use std::net::{self, SocketAddr, ToSocketAddrs};
 use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 
 use crate::driver::Action;
-use crate::net::to_socket_addr;
 
 pub struct TcpListener {
     inner: RawFd,
@@ -19,10 +18,9 @@ impl TcpListener {
     }
 
     pub async fn accept(&self) -> io::Result<(net::TcpStream, SocketAddr)> {
-        let action = Action::accept(self.inner)?;
-        let completion = action.await;
+        let completion = Action::accept(self.inner)?.await;
         let fd = completion.result?;
-        let addr = unsafe { to_socket_addr(completion.action.addr.as_ptr()) }?;
+        let addr = completion.action.get_socketaddr()?;
         Ok((unsafe { net::TcpStream::from_raw_fd(fd) }, addr))
     }
 }

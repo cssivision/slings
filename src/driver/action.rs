@@ -6,9 +6,14 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll};
 
+use io_uring::cqueue;
 use io_uring::squeue::Entry;
 
 use crate::driver::{self, State};
+
+pub(crate) trait Completed {
+    fn completed(&mut self, cqe: &cqueue::Entry);
+}
 
 pub(crate) struct Action<T> {
     driver: Rc<RefCell<driver::Inner>>,
@@ -32,7 +37,7 @@ impl<T> Action<T> {
 
 impl<T> Future for Action<T>
 where
-    T: Unpin,
+    T: Unpin + Completed,
 {
     type Output = Completion<T>;
 
@@ -57,14 +62,20 @@ where
             }
             State::Completed(cqe) => {
                 inner.actions.remove(key);
+
+                let result = if cqe.result() >= 0 {
+                    Ok(cqe.result())
+                } else {
+                    Err(io::Error::from_raw_os_error(-cqe.result()))
+                };
+                let flags = cqe.flags();
+                let mut action = me.action.take().expect("action can not be None");
+                action.completed(&cqe);
+
                 Poll::Ready(Completion {
-                    action: me.action.take().expect("action can not be None"),
-                    result: if cqe.result() >= 0 {
-                        Ok(cqe.result() as i32)
-                    } else {
-                        Err(io::Error::from_raw_os_error(-cqe.result()))
-                    },
-                    flags: cqe.flags(),
+                    action,
+                    result,
+                    flags,
                 })
             }
         }
