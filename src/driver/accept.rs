@@ -22,7 +22,7 @@ impl Accept {
 impl Drop for Accept {
     fn drop(&mut self) {
         if self.result >= 0 {
-            let _sockaddr: libc::sockaddr_storage = unsafe { *self.sockaddr.as_ptr() };
+            let _sockaddr = unsafe { (*self.sockaddr).assume_init() };
         }
     }
 }
