@@ -58,7 +58,7 @@ where
             State::Completed(cqe) => {
                 inner.actions.remove(key);
                 Poll::Ready(Completion {
-                    action: me.action.take().unwrap(),
+                    action: me.action.take().expect("action can not be None"),
                     result: if cqe.result() >= 0 {
                         Ok(cqe.result() as i32)
                     } else {
