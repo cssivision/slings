@@ -12,6 +12,10 @@ use slab::Slab;
 pub(crate) mod action;
 pub(crate) use action::Action;
 pub(crate) mod accept;
+pub(crate) mod buffer;
+pub(crate) mod read;
+pub(crate) mod timeout;
+pub(crate) mod write;
 
 scoped_thread_local!(static CURRENT: Driver);
 
