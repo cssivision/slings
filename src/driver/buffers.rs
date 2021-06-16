@@ -51,9 +51,12 @@ impl Drop for ProvidedBuf {
                 .build()
                 .user_data(u64::MAX);
 
-            let mut sq = driver.ring.submission();
-            if unsafe { sq.push(&op) }.is_err() {
-                unimplemented!();
+            unsafe {
+                driver
+                    .ring
+                    .submission()
+                    .push(&op)
+                    .expect("submit entry fail");
             }
         }
     }

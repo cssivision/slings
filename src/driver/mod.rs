@@ -86,7 +86,6 @@ impl Driver {
             let action = &mut inner.actions[key as usize];
             action.complete(cqe);
         }
-
         Ok(())
     }
 
@@ -125,12 +124,13 @@ impl Driver {
     pub(crate) fn submit(&self, sqe: Entry) -> io::Result<u64> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
-        let entry = inner.actions.vacant_entry();
-        let key = entry.key() as u64;
+        let key = inner.actions.insert(State::Submitted) as u64;
 
         if inner.ring.submission().is_full() {
             inner.ring.submit()?;
+            inner.ring.submission().sync();
         }
+
         let sqe = sqe.user_data(key);
         unsafe {
             inner
@@ -140,8 +140,6 @@ impl Driver {
                 .expect("submit entry fail");
         }
         inner.ring.submit()?;
-        let state = State::Submitted;
-        entry.insert(state);
         Ok(key)
     }
 }
