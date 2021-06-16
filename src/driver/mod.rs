@@ -9,24 +9,37 @@ use io_uring::{cqueue, opcode::ProvideBuffers, squeue::Entry, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
-pub(crate) mod action;
-pub(crate) use action::Action;
 pub(crate) mod accept;
-pub(crate) mod buffer;
+pub(crate) mod action;
+pub(crate) mod buffers;
 pub(crate) mod read;
+pub(crate) mod stream;
 pub(crate) mod timeout;
 pub(crate) mod write;
+
+pub(crate) use action::Action;
+use buffers::Buffers;
+pub(crate) use read::Read;
+pub(crate) use stream::Stream;
 
 scoped_thread_local!(static CURRENT: Driver);
 
 pub(crate) struct Driver {
-    inner: Rc<RefCell<Inner>>,
+    pub inner: Rc<RefCell<Inner>>,
 }
 
-struct Inner {
+impl Clone for Driver {
+    fn clone(&self) -> Self {
+        Driver {
+            inner: self.inner.clone(),
+        }
+    }
+}
+
+pub(crate) struct Inner {
     ring: IoUring,
     actions: Slab<State>,
-    buffers: Vec<u8>,
+    buffers: Buffers,
 }
 
 impl Driver {
@@ -45,11 +58,11 @@ impl Driver {
             panic!("buffer selection not supported");
         }
 
-        let driver = Driver {
+        let mut driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
                 actions: Slab::new(),
-                buffers: Vec::with_capacity(4096 * 256),
+                buffers: Buffers::new(256, 4096),
             })),
         };
         driver.provide_buffers()?;
@@ -66,8 +79,11 @@ impl Driver {
         cq.sync();
 
         for cqe in cq {
-            let key = cqe.user_data() as usize;
-            let action = &mut inner.actions[key];
+            let key = cqe.user_data();
+            if key == u64::MAX {
+                continue;
+            }
+            let action = &mut inner.actions[key as usize];
             action.complete(cqe);
         }
 
@@ -78,10 +94,10 @@ impl Driver {
         CURRENT.set(&self, f)
     }
 
-    fn provide_buffers(&self) -> io::Result<()> {
+    fn provide_buffers(&mut self) -> io::Result<()> {
         let mut inner = self.inner.borrow_mut();
-        let buffers = inner.buffers.as_mut_ptr() as *mut u8;
-        let entry = ProvideBuffers::new(buffers, 4096 * 256, 256, 0, 0)
+        let buffers = &inner.buffers;
+        let entry = ProvideBuffers::new(buffers.mem, buffers.size as i32, buffers.num as u16, 0, 0)
             .build()
             .user_data(0);
 
@@ -96,6 +112,9 @@ impl Driver {
         inner.ring.submit_and_wait(1)?;
         for cqe in inner.ring.completion() {
             let ret = cqe.result();
+            if cqe.user_data() != 0 {
+                panic!("provide_buffers user_data error");
+            }
             if ret < 0 {
                 panic!("provide_buffers submit error, ret: {}", ret);
             }

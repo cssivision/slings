@@ -3,27 +3,19 @@ use std::mem::{size_of, MaybeUninit};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
 use std::os::unix::io::RawFd;
 
-use io_uring::{cqueue, opcode, types};
+use io_uring::{opcode, types};
 
-use crate::driver::action::Completed;
 use crate::driver::Action;
 
 pub(crate) struct Accept {
     sockaddr: Box<MaybeUninit<libc::sockaddr_storage>>,
-    result: i32,
 }
 
 impl Accept {
     pub fn get_socketaddr(&self) -> io::Result<SocketAddr> {
-        unsafe { to_socket_addr(self.sockaddr.as_ptr()) }
-    }
-}
-
-impl Drop for Accept {
-    fn drop(&mut self) {
-        if self.result >= 0 {
-            let _sockaddr = unsafe { (*self.sockaddr).assume_init() };
-        }
+        let addr = unsafe { to_socket_addr(self.sockaddr.as_ptr()) };
+        let _sockaddr = unsafe { (*self.sockaddr).assume_init() };
+        addr
     }
 }
 
@@ -36,19 +28,7 @@ impl Action<Accept> {
                 .flags(libc::SOCK_CLOEXEC)
                 .build();
 
-        Action::submit(
-            Accept {
-                sockaddr,
-                result: 0,
-            },
-            entry,
-        )
-    }
-}
-
-impl Completed for Accept {
-    fn completed(&mut self, cqe: &cqueue::Entry) {
-        self.result = cqe.result();
+        Action::submit(Accept { sockaddr }, entry)
     }
 }
 

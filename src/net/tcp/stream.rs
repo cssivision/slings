@@ -1,42 +1,40 @@
 use std::io;
-use std::net;
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::io::action;
+use futures_util::io::{AsyncBufRead, AsyncRead};
 
-use bytes::BytesMut;
-use futures_util::io::AsyncRead;
+use crate::driver;
 
-#[derive(Debug)]
 pub struct TcpStream {
-    buf: BytesMut,
-    inner: net::TcpStream,
+    inner: driver::Stream,
 }
 
-impl TcpStream {
-    pub fn from_std(stream: net::TcpStream) -> TcpStream {
+impl FromRawFd for TcpStream {
+    unsafe fn from_raw_fd(fd: RawFd) -> TcpStream {
         TcpStream {
-            inner: stream,
-            buf: BytesMut::new(),
+            inner: driver::Stream::new(fd),
         }
+    }
+}
+
+impl AsyncBufRead for TcpStream {
+    fn poll_fill_buf(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+        self.get_mut().inner.poll_fill_buf(cx)
+    }
+
+    fn consume(self: Pin<&mut Self>, amt: usize) {
+        self.get_mut().inner.consume(amt);
     }
 }
 
 impl AsyncRead for TcpStream {
     fn poll_read(
-        mut self: Pin<&mut Self>,
+        self: Pin<&mut Self>,
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        if self.buf.len() >= buf.len() {
-            let data = self.buf.split_to(buf.len());
-            buf.clone_from_slice(&data);
-            return Poll::Ready(Ok(buf.len()));
-        }
-
-        self.buf.reserve(buf.len());
-
-        unimplemented!();
+        self.inner.poll_read(cx, buf)
     }
 }

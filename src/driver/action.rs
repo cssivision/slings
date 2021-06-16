@@ -1,22 +1,15 @@
-use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::mem;
 use std::pin::Pin;
-use std::rc::Rc;
 use std::task::{Context, Poll};
 
-use io_uring::cqueue;
 use io_uring::squeue::Entry;
 
-use crate::driver::{self, State};
-
-pub(crate) trait Completed {
-    fn completed(&mut self, cqe: &cqueue::Entry);
-}
+use crate::driver::{self, Driver, State};
 
 pub(crate) struct Action<T> {
-    driver: Rc<RefCell<driver::Inner>>,
+    pub driver: Driver,
     pub action: Option<T>,
     key: u64,
 }
@@ -27,7 +20,7 @@ impl<T> Action<T> {
             let key = driver.submit(entry)?;
 
             Ok(Action {
-                driver: driver.inner.clone(),
+                driver: driver.clone(),
                 action: Some(action),
                 key,
             })
@@ -37,13 +30,13 @@ impl<T> Action<T> {
 
 impl<T> Future for Action<T>
 where
-    T: Unpin + Completed,
+    T: Unpin,
 {
     type Output = Completion<T>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let me = &mut *self;
-        let mut inner = me.driver.borrow_mut();
+        let mut inner = me.driver.inner.borrow_mut();
         let key = me.key as usize;
         let state = mem::replace(&mut inner.actions[key], State::Submitted);
 
@@ -66,11 +59,11 @@ where
                 let result = if cqe.result() >= 0 {
                     Ok(cqe.result())
                 } else {
+                    println!("resut: {}", cqe.result());
                     Err(io::Error::from_raw_os_error(-cqe.result()))
                 };
                 let flags = cqe.flags();
-                let mut action = me.action.take().expect("action can not be None");
-                action.completed(&cqe);
+                let action = me.action.take().expect("action can not be None");
 
                 Poll::Ready(Completion {
                     action,
