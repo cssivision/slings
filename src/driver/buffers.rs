@@ -41,9 +41,6 @@ pub struct ProvidedBuf {
 
 impl Drop for ProvidedBuf {
     fn drop(&mut self) {
-        if true {
-            return;
-        }
         if let Some(driver) = self.driver.take() {
             let mut driver = driver.inner.borrow_mut();
             let buffers = &driver.buffers;
