@@ -15,7 +15,7 @@ pub struct LocalExecutor {
 
 scoped_thread_local!(static CURRENT: LocalExecutor);
 
-pub fn spawn<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
+pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
     if !CURRENT.is_set() {
         panic!("`spawn` called from outside of a `LocalExecutor`");
     }

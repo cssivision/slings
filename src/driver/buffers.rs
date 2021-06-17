@@ -35,8 +35,14 @@ impl Buffers {
 }
 
 pub struct ProvidedBuf {
-    pub buf: ManuallyDrop<Vec<u8>>,
+    buf: ManuallyDrop<Vec<u8>>,
     driver: Option<Driver>,
+}
+
+impl ProvidedBuf {
+    pub(crate) unsafe fn set_len(&mut self, new_len: usize) {
+        self.buf.set_len(new_len);
+    }
 }
 
 impl Drop for ProvidedBuf {
@@ -44,20 +50,21 @@ impl Drop for ProvidedBuf {
         if let Some(driver) = self.driver.take() {
             let mut driver = driver.inner.borrow_mut();
             let buffers = &driver.buffers;
-
             let ptr = self.buf.as_mut_ptr();
             let bid = (ptr as usize - buffers.mem as usize) / buffers.size;
-            let op = opcode::ProvideBuffers::new(ptr, buffers.size as _, 1, 0, bid as _)
+            let entry = opcode::ProvideBuffers::new(ptr, buffers.size as _, 1, 0, bid as _)
                 .build()
                 .user_data(u64::MAX);
 
-            unsafe {
-                driver
-                    .ring
-                    .submission()
-                    .push(&op)
-                    .expect("submit entry fail");
+            let ring = &mut driver.ring;
+            if ring.submission().is_full() {
+                ring.submit().expect("submit entry fail");
+                ring.submission().sync();
             }
+            unsafe {
+                ring.submission().push(&entry).expect("push entry fail");
+            }
+            ring.submit().expect("submit entry fail");
         }
     }
 }

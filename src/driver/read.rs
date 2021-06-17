@@ -32,7 +32,7 @@ impl Action<Read> {
 
         let buf = unsafe {
             let mut provided_buf = driver.buffers.select(bid, self.driver.clone());
-            provided_buf.buf.set_len(n as usize);
+            provided_buf.set_len(n as usize);
             provided_buf
         };
 
