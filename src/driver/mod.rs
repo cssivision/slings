@@ -14,6 +14,7 @@ use slab::Slab;
 pub(crate) mod accept;
 pub(crate) mod action;
 pub(crate) mod buffers;
+pub(crate) mod connect;
 pub(crate) mod read;
 pub(crate) mod stream;
 pub(crate) mod timeout;

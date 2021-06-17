@@ -21,8 +21,6 @@ impl Stream {
                 read_pos: 0,
                 read_buf: ProvidedBuf::default(),
                 read: Read::Idle,
-                write_pos: 0,
-                write_buf: Vec::with_capacity(DEFAULT_BUF_SIZE),
                 write: Write::Idle,
             },
         }
@@ -47,20 +45,22 @@ impl Stream {
     pub(crate) fn consume(&mut self, amt: usize) {
         self.inner.consume(amt)
     }
+
+    pub(crate) fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+        self.inner.poll_write(cx, buf, self.fd)
+    }
 }
 
 struct Inner {
     read_buf: ProvidedBuf,
     read_pos: usize,
     read: Read,
-    write_pos: usize,
-    write_buf: Vec<u8>,
     write: Write,
 }
 
 enum Write {
     Idle,
-    Reading(Action<driver::Write>),
+    Writing(Action<driver::Write>),
 }
 
 enum Read {
@@ -69,6 +69,22 @@ enum Read {
 }
 
 impl Inner {
+    fn poll_write(&mut self, cx: &mut Context, buf: &[u8], fd: RawFd) -> Poll<io::Result<usize>> {
+        loop {
+            match &mut self.write {
+                Write::Idle => {
+                    let action = Action::write(fd, buf)?;
+                    self.write = Write::Writing(action);
+                }
+                Write::Writing(action) => {
+                    let n = ready!(Pin::new(action).poll_write(cx))?;
+                    self.write = Write::Idle;
+                    return Poll::Ready(Ok(n));
+                }
+            }
+        }
+    }
+
     fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
         loop {
             match &mut self.read {
