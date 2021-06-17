@@ -6,21 +6,24 @@ use std::task::{Context, Poll};
 use crate::driver::buffers::ProvidedBuf;
 use crate::driver::{self, Action};
 
-const DEFAULT_BUF_SIZE: u32 = 4096;
+const DEFAULT_BUF_SIZE: usize = 4096;
 
 pub(crate) struct Stream {
     fd: RawFd,
-    state: State,
+    inner: Inner,
 }
 
 impl Stream {
     pub(crate) fn new(fd: RawFd) -> Stream {
         Stream {
             fd,
-            state: State {
+            inner: Inner {
                 read_pos: 0,
-                read_buf: Default::default(),
+                read_buf: ProvidedBuf::default(),
                 read: Read::Idle,
+                write_pos: 0,
+                write_buf: Vec::with_capacity(DEFAULT_BUF_SIZE),
+                write: Write::Idle,
             },
         }
     }
@@ -30,26 +33,34 @@ impl Stream {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        let src = ready!(self.state.poll_fill_buf(cx, self.fd))?;
+        let src = ready!(self.inner.poll_fill_buf(cx, self.fd))?;
         let n = buf.len().min(src.len());
         buf[..n].copy_from_slice(&src[..n]);
-        self.state.consume(n);
+        self.inner.consume(n);
         Poll::Ready(Ok(n))
     }
 
     pub(crate) fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        self.state.poll_fill_buf(cx, self.fd)
+        self.inner.poll_fill_buf(cx, self.fd)
     }
 
     pub(crate) fn consume(&mut self, amt: usize) {
-        self.state.consume(amt)
+        self.inner.consume(amt)
     }
 }
 
-struct State {
+struct Inner {
     read_buf: ProvidedBuf,
     read_pos: usize,
     read: Read,
+    write_pos: usize,
+    write_buf: Vec<u8>,
+    write: Write,
+}
+
+enum Write {
+    Idle,
+    Reading(Action<driver::Write>),
 }
 
 enum Read {
@@ -57,7 +68,7 @@ enum Read {
     Reading(Action<driver::Read>),
 }
 
-impl State {
+impl Inner {
     fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
         loop {
             match &mut self.read {
@@ -68,7 +79,7 @@ impl State {
 
                     self.read_pos = 0;
                     self.read_buf = ProvidedBuf::default();
-                    let action = Action::read(fd, DEFAULT_BUF_SIZE)?;
+                    let action = Action::read(fd, DEFAULT_BUF_SIZE as u32)?;
                     self.read = Read::Reading(action);
                 }
                 Read::Reading(action) => {

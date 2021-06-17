@@ -12,7 +12,7 @@ use io_uring::{opcode, types};
 use crate::driver::buffers::ProvidedBuf;
 use crate::driver::Action;
 
-pub(crate) struct Read {}
+pub(crate) struct Read;
 
 impl Action<Read> {
     pub(crate) fn read(fd: RawFd, len: u32) -> io::Result<Action<Read>> {
@@ -21,7 +21,7 @@ impl Action<Read> {
             .build()
             .flags(Flags::BUFFER_SELECT);
 
-        Action::submit(Read {}, entry)
+        Action::submit(Read, entry)
     }
 
     pub(crate) fn poll_read(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<ProvidedBuf>> {

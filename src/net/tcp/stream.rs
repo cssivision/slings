@@ -3,7 +3,7 @@ use std::os::unix::io::{FromRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures_util::io::{AsyncBufRead, AsyncRead};
+use futures_util::io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
 use crate::driver;
 

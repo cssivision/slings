@@ -5,7 +5,9 @@ use std::panic;
 use std::rc::Rc;
 use std::task::Waker;
 
-use io_uring::{cqueue, opcode::ProvideBuffers, squeue::Entry, IoUring};
+use io_uring::opcode::ProvideBuffers;
+use io_uring::squeue::Entry;
+use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
@@ -21,6 +23,7 @@ pub(crate) use action::Action;
 use buffers::Buffers;
 pub(crate) use read::Read;
 pub(crate) use stream::Stream;
+pub(crate) use write::Write;
 
 scoped_thread_local!(static CURRENT: Driver);
 
