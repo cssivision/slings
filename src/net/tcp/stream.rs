@@ -35,6 +35,6 @@ impl AsyncRead for TcpStream {
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        self.inner.poll_read(cx, buf)
+        self.get_mut().inner.poll_read(cx, buf)
     }
 }

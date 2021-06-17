@@ -1,4 +1,3 @@
-use std::cell::RefCell;
 use std::io;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
@@ -11,36 +10,39 @@ const DEFAULT_BUF_SIZE: u32 = 4096;
 
 pub(crate) struct Stream {
     fd: RawFd,
-    state: RefCell<State>,
+    state: State,
 }
 
 impl Stream {
     pub(crate) fn new(fd: RawFd) -> Stream {
         Stream {
             fd,
-            state: RefCell::new(State {
+            state: State {
                 read_pos: 0,
                 read_buf: Default::default(),
                 read: Read::Idle,
-            }),
+            },
         }
     }
 
-    pub(crate) fn poll_read(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        let mut state = self.state.borrow_mut();
-        let src = ready!(state.poll_fill_buf(cx, self.fd))?;
+    pub(crate) fn poll_read(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
+        let src = ready!(self.state.poll_fill_buf(cx, self.fd))?;
         let n = buf.len().min(src.len());
         buf[..n].copy_from_slice(&src[..n]);
-        state.consume(n);
+        self.state.consume(n);
         Poll::Ready(Ok(n))
     }
 
     pub(crate) fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        self.state.get_mut().poll_fill_buf(cx, self.fd)
+        self.state.poll_fill_buf(cx, self.fd)
     }
 
     pub(crate) fn consume(&mut self, amt: usize) {
-        self.state.get_mut().consume(amt)
+        self.state.consume(amt)
     }
 }
 
@@ -64,6 +66,8 @@ impl State {
                         return Poll::Ready(Ok(&self.read_buf[self.read_pos..]));
                     }
 
+                    self.read_pos = 0;
+                    self.read_buf = ProvidedBuf::default();
                     let action = Action::read(fd, DEFAULT_BUF_SIZE)?;
                     self.read = Read::Reading(action);
                 }
