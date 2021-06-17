@@ -73,9 +73,16 @@ impl Driver {
     pub(crate) fn wait(&self) -> io::Result<()> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
-        inner.ring.submit_and_wait(1)?;
+        let ring = &mut inner.ring;
 
-        let mut cq = inner.ring.completion();
+        if let Err(e) = ring.submit_and_wait(1) {
+            if e.raw_os_error() == Some(libc::EBUSY) {
+                return Ok(());
+            }
+            return Err(e);
+        }
+
+        let mut cq = ring.completion();
         cq.sync();
 
         for cqe in cq {
