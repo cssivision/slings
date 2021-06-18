@@ -46,7 +46,7 @@ pub mod waker_fn;
 
 pub use async_task::Task;
 pub use blocking::block_on;
-pub use futures_util::io::{AsyncReadExt, AsyncWriteExt};
+pub use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
     local_executor::spawn_local(future)
