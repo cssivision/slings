@@ -19,7 +19,8 @@ impl Action<Connect> {
             SocketAddr::V6(_) => new_v6_socket(),
         }?;
 
-        let entry = opcode::Read::new(types::Fd(fd), sockaddr.as_ptr() as *mut _, socklen).build();
+        let entry =
+            opcode::Connect::new(types::Fd(fd), sockaddr.as_ptr() as *mut _, socklen).build();
 
         Action::submit(Connect { fd }, entry)
     }
@@ -43,7 +44,7 @@ pub(crate) fn new_v6_socket() -> io::Result<i32> {
 }
 
 pub(crate) fn new_socket(domain: libc::c_int, socket_type: libc::c_int) -> io::Result<libc::c_int> {
-    let socket_type = socket_type | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC;
+    let socket_type = socket_type | libc::SOCK_CLOEXEC;
     let socket = syscall!(socket(domain, socket_type, 0));
     socket
 }

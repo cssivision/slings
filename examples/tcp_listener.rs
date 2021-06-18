@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use slings::net::TcpListener;
 use slings::runtime::Runtime;
-use slings::{AsyncReadExt, AsyncWriteExt};
+use slings::AsyncWriteExt;
 
 fn main() -> io::Result<()> {
     let runtime = Runtime::new()?;
@@ -15,10 +15,13 @@ fn main() -> io::Result<()> {
         loop {
             let (mut stream, addr) = listener.accept().await.unwrap();
             println!("accept stream from addr: {:?}", addr);
-            let mut buf = vec![0u8; 10];
-            stream.read_exact(&mut buf).await.unwrap();
-            println!("read bytes: {:?}", buf);
-            stream.write_all(&mut buf).await.unwrap();
+
+            let task = slings::spawn_local(async move {
+                let buf = b"helloworld";
+                stream.write_all(&buf[..]).await.unwrap();
+                println!("write 10 bytes");
+            });
+            task.detach();
         }
     });
     Ok(())

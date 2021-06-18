@@ -59,7 +59,6 @@ where
                 let result = if cqe.result() >= 0 {
                     Ok(cqe.result())
                 } else {
-                    println!("resut: {}", cqe.result());
                     Err(io::Error::from_raw_os_error(-cqe.result()))
                 };
                 let flags = cqe.flags();
