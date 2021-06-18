@@ -24,6 +24,7 @@ pub(crate) use action::Action;
 use buffers::Buffers;
 pub(crate) use read::Read;
 pub(crate) use stream::Stream;
+pub(crate) use timeout::Timeout;
 pub(crate) use write::Write;
 
 scoped_thread_local!(static CURRENT: Driver);
