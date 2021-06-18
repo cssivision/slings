@@ -17,10 +17,6 @@ impl<T> Stream<T> {
     pub fn get_ref(&self) -> &T {
         &self.io
     }
-
-    pub fn get_mut(&mut self) -> &mut T {
-        &mut self.io
-    }
 }
 
 impl<T: AsRawFd> Stream<T> {
@@ -31,7 +27,6 @@ impl<T: AsRawFd> Stream<T> {
                 read_pos: 0,
                 read_buf: ProvidedBuf::default(),
                 read: Read::Idle,
-                write_pos: 0,
                 write_buf: Vec::with_capacity(DEFAULT_BUF_SIZE),
                 write: Write::Idle,
             },
@@ -61,10 +56,6 @@ impl<T: AsRawFd> Stream<T> {
     pub(crate) fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         self.inner.poll_write(cx, buf, self.io.as_raw_fd())
     }
-
-    pub(crate) fn poll_flush(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.inner.poll_flush(cx, self.io.as_raw_fd())
-    }
 }
 
 struct Inner {
@@ -72,7 +63,6 @@ struct Inner {
     read_pos: usize,
     read: Read,
     write_buf: Vec<u8>,
-    write_pos: usize,
     write: Write,
 }
 
@@ -88,37 +78,20 @@ enum Read {
 
 impl Inner {
     fn poll_write(&mut self, cx: &mut Context, buf: &[u8], fd: RawFd) -> Poll<io::Result<usize>> {
-        let n = self.write_buf.capacity() - self.write_buf.len();
-        if n == 0 {
-            ready!(self.poll_flush(cx, fd))?;
-        }
-
-        let size = n.min(buf.len());
-        self.write_buf.extend_from_slice(&buf[..size]);
-        assert!(
-            self.write_buf.capacity() == DEFAULT_BUF_SIZE,
-            "write buf capacity should not grow"
-        );
-        Poll::Ready(Ok(n))
-    }
-
-    fn poll_flush(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<()>> {
         loop {
             match &mut self.write {
                 Write::Idle => {
-                    if self.write_buf[self.write_pos..].is_empty() {
-                        self.write_buf.clear();
-                        self.write_pos = 0;
-                        return Poll::Ready(Ok(()));
-                    }
+                    let size = buf.len().min(self.write_buf.capacity());
+                    self.write_buf.extend_from_slice(&buf[..size]);
 
-                    let action = Action::write(fd, &self.write_buf[self.write_pos..])?;
+                    let action = Action::write(fd, &self.write_buf[..size])?;
                     self.write = Write::Writing(action);
                 }
                 Write::Writing(action) => {
                     let n = ready!(Pin::new(action).poll_write(cx))?;
-                    self.write_pos += n;
                     self.write = Write::Idle;
+                    self.write_buf.clear();
+                    return Poll::Ready(Ok(n));
                 }
             }
         }

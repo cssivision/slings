@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 
 use slings::net::TcpListener;
 use slings::runtime::Runtime;
-use slings::AsyncReadExt;
+use slings::{AsyncReadExt, AsyncWriteExt};
 
 fn main() -> io::Result<()> {
     let runtime = Runtime::new()?;
@@ -18,6 +18,7 @@ fn main() -> io::Result<()> {
             let mut buf = vec![0u8; 10];
             stream.read_exact(&mut buf).await.unwrap();
             println!("read bytes: {:?}", buf);
+            stream.write_all(&mut buf).await.unwrap();
         }
     });
     Ok(())

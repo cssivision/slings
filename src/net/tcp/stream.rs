@@ -114,8 +114,8 @@ impl AsyncWrite for TcpStream {
         self.get_mut().inner.poll_write(cx, buf)
     }
 
-    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
-        self.get_mut().inner.poll_flush(cx)
+    fn poll_flush(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
+        Poll::Ready(Ok(()))
     }
 
     fn poll_close(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
