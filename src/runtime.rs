@@ -32,8 +32,6 @@ impl Runtime {
         self.driver.with(|| {
             self.local_executor.with(|| {
                 block_on(poll_fn(|cx| {
-                    self.local_executor.register(cx.waker());
-
                     loop {
                         if let Poll::Ready(output) = future.as_mut().poll(cx) {
                             return Poll::Ready(output);

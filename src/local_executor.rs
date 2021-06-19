@@ -1,7 +1,5 @@
-use std::cell::RefCell;
 use std::future::Future;
-use std::rc::Rc;
-use std::task::Waker;
+use std::sync::Arc;
 
 use async_task::{Runnable, Task};
 use concurrent_queue::ConcurrentQueue;
@@ -10,8 +8,7 @@ use scoped_tls::scoped_thread_local;
 const MAX_TASKS_PER_TICK: usize = 64;
 
 pub struct LocalExecutor {
-    queue: Rc<ConcurrentQueue<Runnable>>,
-    waker: Rc<RefCell<Option<Waker>>>,
+    queue: Arc<ConcurrentQueue<Runnable>>,
 }
 
 scoped_thread_local!(static EXECUTOR: LocalExecutor);
@@ -27,8 +24,7 @@ pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Tas
 impl LocalExecutor {
     pub fn new() -> LocalExecutor {
         LocalExecutor {
-            queue: Rc::new(ConcurrentQueue::unbounded()),
-            waker: Rc::new(RefCell::new(None)),
+            queue: Arc::new(ConcurrentQueue::unbounded()),
         }
     }
 
@@ -52,18 +48,10 @@ impl LocalExecutor {
         }
     }
 
-    pub(crate) fn register(&self, waker: &Waker) {
-        *self.waker.borrow_mut() = Some(waker.clone());
-    }
-
     pub fn spawn_local<T: 'static>(&self, future: impl Future<Output = T> + 'static) -> Task<T> {
         let queue = self.queue.clone();
-        let waker = self.waker.clone();
         let schedule = move |runnable| {
             let _ = queue.push(runnable);
-            if let Some(waker) = waker.borrow_mut().take() {
-                waker.wake();
-            }
         };
 
         let (runnable, task) = async_task::spawn_local(future, schedule);
