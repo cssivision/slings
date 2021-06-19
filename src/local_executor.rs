@@ -63,18 +63,16 @@ impl LocalExecutor {
     }
 
     pub fn spawn<T: 'static>(&self, future: impl Future<Output = T> + 'static) -> Task<T> {
-        self.with(|| {
-            let schedule = |runnable| {
-                CURRENT.with(|local_executor| {
-                    let _ = local_executor.queue.push(runnable);
-                    local_executor.wake();
-                });
-            };
+        let schedule = |runnable| {
+            CURRENT.with(|local_executor| {
+                let _ = local_executor.queue.push(runnable);
+                local_executor.wake();
+            });
+        };
 
-            let (runnable, task) = async_task::spawn_local(future, schedule);
-            runnable.schedule();
-            task
-        })
+        let (runnable, task) = async_task::spawn_local(future, schedule);
+        runnable.schedule();
+        task
     }
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {

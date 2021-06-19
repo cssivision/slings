@@ -1,8 +1,10 @@
 use std::io;
 use std::net::SocketAddr;
+use std::time::Duration;
 
 use slings::net::TcpListener;
 use slings::runtime::Runtime;
+use slings::time::delay_for;
 use slings::AsyncWriteExt;
 
 fn main() -> io::Result<()> {
@@ -17,9 +19,19 @@ fn main() -> io::Result<()> {
             println!("accept stream from addr: {:?}", addr);
 
             let task = slings::spawn_local(async move {
-                let buf = b"helloworld";
-                stream.write_all(&buf[..]).await.unwrap();
-                println!("write 10 bytes");
+                loop {
+                    let buf = b"helloworld";
+                    match stream.write_all(&buf[..]).await {
+                        Ok(_) => {
+                            println!("write 10 bytes");
+                        }
+                        Err(e) => {
+                            println!("write fail {}", e);
+                            break;
+                        }
+                    }
+                    delay_for(Duration::from_secs(1)).await;
+                }
             });
             task.detach();
         }
