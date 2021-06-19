@@ -1,13 +1,10 @@
 use std::io;
-use std::mem::ManuallyDrop;
 use std::net::{self, SocketAddr, ToSocketAddrs};
-use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::io::{FromRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use std::time::Duration;
 
 use futures_util::io::{AsyncBufRead, AsyncRead, AsyncWrite};
-use socket2::Socket;
 
 use crate::driver::{self, Action};
 
@@ -64,28 +61,15 @@ impl TcpStream {
     }
 
     pub fn shutdown(&self, how: net::Shutdown) -> std::io::Result<()> {
-        self.as_socket().shutdown(how)
+        self.inner.get_ref().shutdown(how)
     }
 
     pub fn nodelay(&self) -> io::Result<bool> {
-        self.as_socket().nodelay()
+        self.inner.get_ref().nodelay()
     }
 
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
-        self.as_socket().set_nodelay(nodelay)
-    }
-
-    pub fn set_keepalive(&self, keepalive: Option<Duration>) -> io::Result<()> {
-        self.as_socket().set_keepalive(keepalive)
-    }
-
-    pub fn keepalive(&self) -> io::Result<Option<Duration>> {
-        self.as_socket().keepalive()
-    }
-
-    fn as_socket(&self) -> ManuallyDrop<Socket> {
-        let raw_fd = self.inner.get_ref().as_raw_fd();
-        unsafe { ManuallyDrop::new(Socket::from_raw_fd(raw_fd)) }
+        self.inner.get_ref().set_nodelay(nodelay)
     }
 }
 
