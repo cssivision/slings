@@ -25,9 +25,9 @@ impl<T: AsRawFd> Stream<T> {
             io,
             inner: Inner {
                 read_pos: 0,
-                read_buf: ProvidedBuf::default(),
+                rd: ProvidedBuf::default(),
                 read: Read::Idle,
-                write_buf: Vec::with_capacity(DEFAULT_BUF_SIZE),
+                wr: Vec::with_capacity(DEFAULT_BUF_SIZE),
                 write: Write::Idle,
             },
         }
@@ -59,10 +59,10 @@ impl<T: AsRawFd> Stream<T> {
 }
 
 struct Inner {
-    read_buf: ProvidedBuf,
+    rd: ProvidedBuf,
     read_pos: usize,
     read: Read,
-    write_buf: Vec<u8>,
+    wr: Vec<u8>,
     write: Write,
 }
 
@@ -81,16 +81,16 @@ impl Inner {
         loop {
             match &mut self.write {
                 Write::Idle => {
-                    let size = buf.len().min(self.write_buf.capacity());
-                    self.write_buf.extend_from_slice(&buf[..size]);
+                    let size = buf.len().min(self.wr.capacity());
+                    self.wr.extend_from_slice(&buf[..size]);
 
-                    let action = Action::write(fd, &self.write_buf[..size])?;
+                    let action = Action::write(fd, &self.wr[..size])?;
                     self.write = Write::Writing(action);
                 }
                 Write::Writing(action) => {
                     let n = ready!(Pin::new(action).poll_write(cx))?;
                     self.write = Write::Idle;
-                    self.write_buf.clear();
+                    self.wr.clear();
                     return Poll::Ready(Ok(n));
                 }
             }
@@ -101,19 +101,19 @@ impl Inner {
         loop {
             match &mut self.read {
                 Read::Idle => {
-                    if !self.read_buf[self.read_pos..].is_empty() {
-                        return Poll::Ready(Ok(&self.read_buf[self.read_pos..]));
+                    if !self.rd[self.read_pos..].is_empty() {
+                        return Poll::Ready(Ok(&self.rd[self.read_pos..]));
                     }
 
                     self.read_pos = 0;
-                    self.read_buf = ProvidedBuf::default();
+                    self.rd = ProvidedBuf::default();
                     let action = Action::read(fd, DEFAULT_BUF_SIZE as u32)?;
                     self.read = Read::Reading(action);
                 }
                 Read::Reading(action) => {
-                    self.read_buf = ready!(Pin::new(action).poll_read(cx))?;
-                    if self.read_buf.is_empty() {
-                        return Poll::Ready(Ok(&self.read_buf[self.read_pos..]));
+                    self.rd = ready!(Pin::new(action).poll_read(cx))?;
+                    if self.rd.is_empty() {
+                        return Poll::Ready(Ok(&self.rd[self.read_pos..]));
                     }
                     self.read = Read::Idle;
                 }
