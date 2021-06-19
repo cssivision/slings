@@ -37,7 +37,7 @@ impl Future for Delay {
     type Output = ();
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        match Pin::new(&mut self.inner).poll(cx) {
+        match self.inner.poll_timeout(cx) {
             Poll::Ready(_) => Poll::Ready(()),
             Poll::Pending => Poll::Pending,
         }

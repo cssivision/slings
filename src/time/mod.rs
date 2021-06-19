@@ -1,4 +1,3 @@
-use std::future::Future;
 use std::io;
 use std::ops::Sub;
 use std::pin::Pin;
@@ -45,12 +44,8 @@ impl Timer {
         self.state = State::Idle;
         self.deadline = when;
     }
-}
 
-impl Future for Timer {
-    type Output = io::Result<Instant>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<Instant>> {
+    fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<Instant>> {
         loop {
             match &mut self.state {
                 State::Idle => {
