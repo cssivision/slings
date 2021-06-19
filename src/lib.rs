@@ -42,6 +42,7 @@ pub mod local_executor;
 pub mod net;
 pub mod parking;
 pub mod runtime;
+pub mod time;
 pub mod waker_fn;
 
 pub use async_task::Task;
