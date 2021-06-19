@@ -15,6 +15,3 @@ socket2 = "0.3"
 concurrent-queue = "1.2"
 futures-util = { version = "0.3", features = ["io"] }
 pin-project-lite = "0.2"
-
-[dev-dependencies]
-log = "0.4"
