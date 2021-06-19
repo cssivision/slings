@@ -5,26 +5,29 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 use std::time::Instant;
 
-pub use delay::{delay_for, delay_until, Delay};
-
 use crate::driver::{self, Action};
 
 pub mod delay;
+pub mod interval;
 pub mod timeout;
+
+pub use delay::{delay_for, delay_until, Delay};
+pub use interval::{interval, interval_at, Interval};
+pub use timeout::{timeout, timeout_at, Timeout};
 
 enum State {
     Idle,
     Waiting(Action<driver::Timeout>),
 }
 
-pub struct Timeout {
+pub struct Timer {
     deadline: Instant,
     state: State,
 }
 
-impl Timeout {
-    pub fn new(deadline: Instant) -> Timeout {
-        Timeout {
+impl Timer {
+    pub fn new(deadline: Instant) -> Timer {
+        Timer {
             deadline,
             state: State::Idle,
         }
@@ -44,7 +47,7 @@ impl Timeout {
     }
 }
 
-impl Future for Timeout {
+impl Future for Timer {
     type Output = io::Result<Instant>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<Instant>> {
