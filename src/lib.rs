@@ -36,17 +36,14 @@ macro_rules! ready {
 
 use std::future::Future;
 
-pub mod blocking;
 mod driver;
 pub mod local_executor;
 pub mod net;
-pub mod parking;
 pub mod runtime;
 pub mod time;
 pub mod waker_fn;
 
 pub use async_task::Task;
-pub use blocking::block_on;
 pub use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
