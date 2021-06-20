@@ -1,5 +1,5 @@
 use std::io;
-use std::net::{self, SocketAddr, ToSocketAddrs};
+use std::net::{self, Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs};
 use std::os::unix::io::{FromRawFd, IntoRawFd, RawFd};
 
 use super::stream::TcpStream;
@@ -21,7 +21,11 @@ impl TcpListener {
     pub async fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         let completion = Action::accept(self.inner)?.await;
         let fd = completion.result?;
-        let addr = completion.action.get_socketaddr()?;
+        let _addr = completion.action.get_socketaddr()?;
+        let stream = unsafe { TcpStream::from_raw_fd(fd) };
+        let addr = stream
+            .peer_addr()
+            .unwrap_or_else(|_| SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
         Ok((unsafe { TcpStream::from_raw_fd(fd) }, addr))
     }
 }
