@@ -21,7 +21,7 @@ impl TcpListener {
     pub async fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
         let completion = Action::accept(self.inner)?.await;
         let fd = completion.result?;
-        let _addr = completion.action.get_socketaddr()?;
+        let _addr = completion.action.get_socketaddr();
         let stream = unsafe { TcpStream::from_raw_fd(fd) };
         let addr = stream
             .peer_addr()
