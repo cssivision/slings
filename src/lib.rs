@@ -37,11 +37,11 @@ macro_rules! ready {
 use std::future::Future;
 
 mod driver;
-pub mod local_executor;
+mod local_executor;
 pub mod net;
 pub mod runtime;
 pub mod time;
-pub mod waker_fn;
+mod waker_fn;
 
 pub use async_task::Task;
 pub use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};

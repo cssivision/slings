@@ -15,7 +15,7 @@ scoped_thread_local!(static EXECUTOR: LocalExecutor);
 
 pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
     if !EXECUTOR.is_set() {
-        panic!("`spawn` called from outside of a `LocalExecutor`");
+        panic!("`spawn_local` called from outside of a `LocalExecutor`");
     }
 
     EXECUTOR.with(|local_executor| local_executor.spawn_local(future))

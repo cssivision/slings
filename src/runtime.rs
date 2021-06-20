@@ -15,12 +15,9 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> io::Result<Runtime> {
-        let local_executor = LocalExecutor::new();
-        let driver = Driver::new()?;
-
         Ok(Runtime {
-            local_executor,
-            driver,
+            local_executor: LocalExecutor::new(),
+            driver: Driver::new()?,
         })
     }
 
@@ -48,9 +45,7 @@ impl Runtime {
 /// Runs a future to completion on the current thread.
 fn block_on<T>(future: impl Future<Output = T>) -> T {
     pin_mut!(future);
-
     let waker = waker_fn(|| {});
-
     let cx = &mut Context::from_waker(&waker);
     loop {
         match future.as_mut().poll(cx) {
