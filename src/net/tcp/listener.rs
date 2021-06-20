@@ -26,6 +26,6 @@ impl TcpListener {
         let addr = stream
             .peer_addr()
             .unwrap_or_else(|_| SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(0, 0, 0, 0), 0)));
-        Ok((unsafe { TcpStream::from_raw_fd(fd) }, addr))
+        Ok((stream, addr))
     }
 }
