@@ -84,6 +84,9 @@ impl Driver {
             if e.raw_os_error() == Some(libc::EBUSY) {
                 return Ok(());
             }
+            if e.kind() == io::ErrorKind::Interrupted {
+                return Ok(());
+            }
             return Err(e);
         }
 
