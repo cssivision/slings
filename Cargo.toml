@@ -14,6 +14,5 @@ async-task = "4.0"
 scoped-tls = "1.0"
 slab = "0.4"
 libc = "0.2"
-concurrent-queue = "1.2"
 futures-util = { version = "0.3", features = ["io"] }
 pin-project-lite = "0.2"

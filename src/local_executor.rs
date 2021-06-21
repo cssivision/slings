@@ -1,14 +1,15 @@
+use std::cell::RefCell;
+use std::collections::VecDeque;
 use std::future::Future;
-use std::sync::Arc;
+use std::rc::Rc;
 
 use async_task::{Runnable, Task};
-use concurrent_queue::ConcurrentQueue;
 use scoped_tls::scoped_thread_local;
 
 const MAX_TASKS_PER_TICK: usize = 64;
 
 pub struct LocalExecutor {
-    queue: Arc<ConcurrentQueue<Runnable>>,
+    queue: Rc<RefCell<VecDeque<Runnable>>>,
 }
 
 scoped_thread_local!(static EXECUTOR: LocalExecutor);
@@ -24,7 +25,7 @@ pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Tas
 impl LocalExecutor {
     pub fn new() -> LocalExecutor {
         LocalExecutor {
-            queue: Arc::new(ConcurrentQueue::unbounded()),
+            queue: Rc::new(RefCell::new(VecDeque::with_capacity(64))),
         }
     }
 
@@ -41,20 +42,16 @@ impl LocalExecutor {
     }
 
     fn next_task(&self) -> Option<Runnable> {
-        if let Ok(task) = self.queue.pop() {
-            Some(task)
-        } else {
-            None
-        }
+        self.queue.borrow_mut().pop_front()
     }
 
     pub fn spawn_local<T: 'static>(&self, future: impl Future<Output = T> + 'static) -> Task<T> {
         let queue = self.queue.clone();
         let schedule = move |runnable| {
-            let _ = queue.push(runnable);
+            let _ = queue.borrow_mut().push_back(runnable);
         };
 
-        let (runnable, task) = async_task::spawn_local(future, schedule);
+        let (runnable, task) = unsafe { async_task::spawn_unchecked(future, schedule) };
         runnable.schedule();
         task
     }
