@@ -29,7 +29,7 @@ impl Buffers {
 
         ProvidedBuf {
             buf,
-            driver: Some(driver.clone()),
+            driver: Some(driver),
         }
     }
 }

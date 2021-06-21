@@ -45,8 +45,7 @@ pub(crate) fn new_v6_socket() -> io::Result<i32> {
 
 pub(crate) fn new_socket(domain: libc::c_int, socket_type: libc::c_int) -> io::Result<libc::c_int> {
     let socket_type = socket_type | libc::SOCK_CLOEXEC;
-    let socket = syscall!(socket(domain, socket_type, 0));
-    socket
+    syscall!(socket(domain, socket_type, 0))
 }
 
 #[repr(C)]

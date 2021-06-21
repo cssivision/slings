@@ -31,23 +31,20 @@ impl Action<Timeout> {
         let result = completion.result;
 
         match result {
-            Err(err) if err.raw_os_error() == Some(libc::ETIME) => {
-                return Poll::Ready(Ok(State::Elapsed));
-            }
+            Err(err) if err.raw_os_error() == Some(libc::ETIME) => Poll::Ready(Ok(State::Elapsed)),
             Err(err) if err.raw_os_error() == Some(libc::ECANCELED) => {
-                return Poll::Ready(Ok(State::Canceled));
+                Poll::Ready(Ok(State::Canceled))
             }
-            Err(err) => {
-                return Poll::Ready(Err(err));
-            }
+            Err(err) => Poll::Ready(Err(err)),
             Ok(n) => {
                 if n == 0 {
-                    return Poll::Ready(Ok(State::Link));
+                    Poll::Ready(Ok(State::Link))
+                } else {
+                    Poll::Ready(Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        format!("result {}", n),
+                    )))
                 }
-                return Poll::Ready(Err(io::Error::new(
-                    io::ErrorKind::TimedOut,
-                    format!("result {}", n),
-                )));
             }
         }
     }
