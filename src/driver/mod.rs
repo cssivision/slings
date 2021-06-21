@@ -102,7 +102,7 @@ impl Driver {
     }
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
-        CURRENT.set(&self, f)
+        CURRENT.set(self, f)
     }
 
     fn provide_buffers(&mut self) -> io::Result<()> {

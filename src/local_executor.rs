@@ -57,6 +57,6 @@ impl LocalExecutor {
     }
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
-        EXECUTOR.set(&self, f)
+        EXECUTOR.set(self, f)
     }
 }
