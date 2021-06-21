@@ -34,8 +34,6 @@ macro_rules! ready {
     };
 }
 
-use std::future::Future;
-
 mod driver;
 mod local_executor;
 pub mod net;
@@ -43,9 +41,7 @@ pub mod runtime;
 pub mod time;
 mod waker_fn;
 
+pub use local_executor::spawn_local;
+
 pub use async_task::Task;
 pub use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-
-pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
-    local_executor::spawn_local(future)
-}
