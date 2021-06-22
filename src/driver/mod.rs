@@ -27,6 +27,9 @@ pub(crate) use stream::Stream;
 pub(crate) use timeout::Timeout;
 pub(crate) use write::Write;
 
+const DEFAULT_BUFFER_SIZE: usize = 2048;
+const DEFAULT_BUFFER_NUM: usize = 512;
+
 scoped_thread_local!(static CURRENT: Driver);
 
 pub(crate) struct Driver {
@@ -67,7 +70,7 @@ impl Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
                 actions: Slab::new(),
-                buffers: Buffers::new(256, 4096),
+                buffers: Buffers::new(DEFAULT_BUFFER_NUM, DEFAULT_BUFFER_SIZE),
             })),
         };
         driver.provide_buffers()?;
