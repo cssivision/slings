@@ -6,14 +6,14 @@ use io_uring::opcode;
 use crate::driver::Driver;
 
 #[derive(Debug)]
-pub(crate) struct Buffers {
+pub struct Buffers {
     pub size: usize,
     pub num: usize,
     pub mem: *mut u8,
 }
 
 impl Buffers {
-    pub(crate) fn new(num: usize, size: usize) -> Buffers {
+    pub fn new(num: usize, size: usize) -> Buffers {
         let total = num * size;
         let mut mem = ManuallyDrop::new(Vec::<u8>::with_capacity(total as usize));
         Buffers {
@@ -23,7 +23,7 @@ impl Buffers {
         }
     }
 
-    pub(crate) unsafe fn select(&self, bid: u16, driver: Driver) -> ProvidedBuf {
+    pub unsafe fn select(&self, bid: u16, driver: Driver) -> ProvidedBuf {
         let ptr = self.mem.add(self.size * bid as usize);
         let buf = ManuallyDrop::new(Vec::from_raw_parts(ptr, 0, self.size));
 
@@ -40,7 +40,7 @@ pub struct ProvidedBuf {
 }
 
 impl ProvidedBuf {
-    pub(crate) unsafe fn set_len(&mut self, new_len: usize) {
+    pub unsafe fn set_len(&mut self, new_len: usize) {
         self.buf.set_len(new_len);
     }
 }

@@ -7,18 +7,18 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
-pub(crate) struct Timeout {
+pub struct Timeout {
     spec: types::Timespec,
 }
 
-pub(crate) enum State {
+pub enum State {
     Elapsed,
     Canceled,
     Link,
 }
 
 impl Action<Timeout> {
-    pub(crate) fn timeout(sec: u64, nsec: u32) -> io::Result<Action<Timeout>> {
+    pub fn timeout(sec: u64, nsec: u32) -> io::Result<Action<Timeout>> {
         let timeout = Timeout {
             spec: types::Timespec::new().sec(sec).nsec(nsec),
         };
@@ -26,7 +26,7 @@ impl Action<Timeout> {
         Action::submit(timeout, entry)
     }
 
-    pub(crate) fn poll_timeout(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<State>> {
+    pub fn poll_timeout(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<State>> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let result = completion.result;
 

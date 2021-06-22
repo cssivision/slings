@@ -7,12 +7,12 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
-pub(crate) struct Connect {
+pub struct Connect {
     fd: RawFd,
 }
 
 impl Action<Connect> {
-    pub(crate) fn connect(addr: SocketAddr) -> io::Result<Action<Connect>> {
+    pub fn connect(addr: SocketAddr) -> io::Result<Action<Connect>> {
         let (sockaddr, socklen) = socket_addr(&addr);
         let fd = match addr {
             SocketAddr::V4(_) => new_v4_socket(),
@@ -27,7 +27,7 @@ impl Action<Connect> {
 }
 
 impl Connect {
-    pub(crate) fn get_sock(&self, result: io::Result<i32>) -> io::Result<RawFd> {
+    pub fn get_sock(&self, result: io::Result<i32>) -> io::Result<RawFd> {
         match result {
             Err(err) if err.raw_os_error() != Some(libc::EINPROGRESS) => Err(err),
             _ => Ok(self.fd),
@@ -35,15 +35,15 @@ impl Connect {
     }
 }
 
-pub(crate) fn new_v4_socket() -> io::Result<i32> {
+pub fn new_v4_socket() -> io::Result<i32> {
     new_socket(libc::AF_INET, libc::SOCK_STREAM)
 }
 
-pub(crate) fn new_v6_socket() -> io::Result<i32> {
+pub fn new_v6_socket() -> io::Result<i32> {
     new_socket(libc::AF_INET6, libc::SOCK_STREAM)
 }
 
-pub(crate) fn new_socket(domain: libc::c_int, socket_type: libc::c_int) -> io::Result<libc::c_int> {
+pub fn new_socket(domain: libc::c_int, socket_type: libc::c_int) -> io::Result<libc::c_int> {
     let socket_type = socket_type | libc::SOCK_CLOEXEC;
     syscall!(socket(domain, socket_type, 0))
 }

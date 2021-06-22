@@ -8,7 +8,7 @@ use io_uring::squeue::Entry;
 
 use crate::driver::{self, Driver, State};
 
-pub(crate) struct Action<T> {
+pub struct Action<T> {
     pub driver: Driver,
     pub action: Option<T>,
     key: u64,
@@ -74,7 +74,7 @@ where
     }
 }
 
-pub(crate) struct Completion<T> {
+pub struct Completion<T> {
     pub(crate) action: T,
     pub(crate) result: io::Result<i32>,
     pub(crate) flags: u32,

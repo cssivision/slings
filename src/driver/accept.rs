@@ -7,7 +7,7 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
-pub(crate) struct Accept;
+pub struct Accept;
 
 impl Action<Accept> {
     pub(crate) fn accept(fd: RawFd) -> io::Result<Action<Accept>> {

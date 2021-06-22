@@ -20,19 +20,19 @@ pub(crate) mod stream;
 pub(crate) mod timeout;
 pub(crate) mod write;
 
-pub(crate) use action::Action;
+pub use action::Action;
 use buffers::Buffers;
-pub(crate) use read::Read;
-pub(crate) use stream::Stream;
-pub(crate) use timeout::Timeout;
-pub(crate) use write::Write;
+pub use read::Read;
+pub use stream::Stream;
+pub use timeout::Timeout;
+pub use write::Write;
 
-const DEFAULT_BUFFER_SIZE: usize = 2048;
-const DEFAULT_BUFFER_NUM: usize = 512;
+pub const DEFAULT_BUFFER_SIZE: usize = 2048;
+const DEFAULT_BUFFER_NUM: usize = 1024;
 
 scoped_thread_local!(static CURRENT: Driver);
 
-pub(crate) struct Driver {
+pub struct Driver {
     pub inner: Rc<RefCell<Inner>>,
 }
 
@@ -44,7 +44,7 @@ impl Clone for Driver {
     }
 }
 
-pub(crate) struct Inner {
+pub struct Inner {
     ring: IoUring,
     actions: Slab<State>,
     buffers: Buffers,

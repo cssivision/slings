@@ -6,9 +6,9 @@ use std::task::{Context, Poll};
 use crate::driver::buffers::ProvidedBuf;
 use crate::driver::{self, Action};
 
-const DEFAULT_BUF_SIZE: usize = 4096;
+use crate::driver::DEFAULT_BUFFER_SIZE;
 
-pub(crate) struct Stream<T> {
+pub struct Stream<T> {
     inner: Inner,
     io: T,
 }
@@ -20,24 +20,20 @@ impl<T> Stream<T> {
 }
 
 impl<T: AsRawFd> Stream<T> {
-    pub(crate) fn new(io: T) -> Stream<T> {
+    pub fn new(io: T) -> Stream<T> {
         Stream {
             io,
             inner: Inner {
                 read_pos: 0,
                 rd: ProvidedBuf::default(),
                 read: Read::Idle,
-                wr: Vec::with_capacity(DEFAULT_BUF_SIZE),
+                wr: Vec::with_capacity(DEFAULT_BUFFER_SIZE),
                 write: Write::Idle,
             },
         }
     }
 
-    pub(crate) fn poll_read(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+    pub fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         let src = ready!(self.inner.poll_fill_buf(cx, self.io.as_raw_fd()))?;
         let n = buf.len().min(src.len());
         buf[..n].copy_from_slice(&src[..n]);
@@ -45,15 +41,15 @@ impl<T: AsRawFd> Stream<T> {
         Poll::Ready(Ok(n))
     }
 
-    pub(crate) fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+    pub fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
         self.inner.poll_fill_buf(cx, self.io.as_raw_fd())
     }
 
-    pub(crate) fn consume(&mut self, amt: usize) {
+    pub fn consume(&mut self, amt: usize) {
         self.inner.consume(amt)
     }
 
-    pub(crate) fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+    pub fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         self.inner.poll_write(cx, buf, self.io.as_raw_fd())
     }
 }
@@ -107,7 +103,7 @@ impl Inner {
 
                     self.read_pos = 0;
                     self.rd = ProvidedBuf::default();
-                    let action = Action::read(fd, DEFAULT_BUF_SIZE as u32)?;
+                    let action = Action::read(fd, DEFAULT_BUFFER_SIZE as u32)?;
                     self.read = Read::Reading(action);
                 }
                 Read::Reading(action) => {

@@ -8,10 +8,10 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
-pub(crate) struct Write;
+pub struct Write;
 
 impl Action<Write> {
-    pub(crate) fn write(fd: RawFd, buf: &[u8]) -> io::Result<Action<Write>> {
+    pub fn write(fd: RawFd, buf: &[u8]) -> io::Result<Action<Write>> {
         let ptr = buf.as_ptr();
         let len = buf.len() as u32;
         let entry = opcode::Write::new(types::Fd(fd), ptr, len).build();

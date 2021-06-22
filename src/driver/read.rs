@@ -12,7 +12,7 @@ use io_uring::{opcode, types};
 use crate::driver::buffers::ProvidedBuf;
 use crate::driver::Action;
 
-pub(crate) struct Read;
+pub struct Read;
 
 impl Action<Read> {
     pub(crate) fn read(fd: RawFd, len: u32) -> io::Result<Action<Read>> {
