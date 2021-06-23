@@ -1,12 +1,20 @@
+use std::cell::Cell;
 use std::future::Future;
 use std::io;
 use std::task::{Context, Poll};
 
-use futures_util::future::poll_fn;
-
-use crate::driver::Driver;
+use crate::driver::{notify, Driver};
 use crate::local_executor::LocalExecutor;
 use crate::waker_fn::waker_fn;
+
+/// Runs a closure when dropped.
+struct CallOnDrop<F: Fn()>(F);
+
+impl<F: Fn()> Drop for CallOnDrop<F> {
+    fn drop(&mut self) {
+        (self.0)();
+    }
+}
 
 pub struct Runtime {
     local_executor: LocalExecutor,
@@ -26,31 +34,34 @@ impl Runtime {
         F: Future,
     {
         pin_mut!(future);
+        thread_local! {
+            static IO_BLOCKED: Cell<bool> = Cell::new(false);
+        }
+
+        let event_fd = self.driver.get_event_fd();
+        let waker = waker_fn(move || {
+            if IO_BLOCKED.with(Cell::get) {
+                notify(event_fd);
+            }
+        });
+        let cx = &mut Context::from_waker(&waker);
+
         self.driver.with(|| {
-            self.local_executor.with(|| {
-                block_on(poll_fn(|cx| loop {
-                    if let Poll::Ready(output) = future.as_mut().poll(cx) {
-                        return Poll::Ready(output);
-                    }
-                    if self.local_executor.tick() {
-                        return Poll::Pending;
-                    }
-                    self.driver.wait().expect("driver wait error");
-                }))
+            self.local_executor.with(|| loop {
+                if let Poll::Ready(output) = future.as_mut().poll(cx) {
+                    return output;
+                }
+
+                if self.local_executor.tick() {
+                    continue;
+                }
+
+                IO_BLOCKED.with(|io| io.set(true));
+                let _guard = CallOnDrop(|| {
+                    IO_BLOCKED.with(|io| io.set(false));
+                });
+                self.driver.wait().expect("driver wait error");
             })
         })
-    }
-}
-
-/// Runs a future to completion on the current thread.
-fn block_on<T>(future: impl Future<Output = T>) -> T {
-    pin_mut!(future);
-    let waker = waker_fn(|| {});
-    let cx = &mut Context::from_waker(&waker);
-    loop {
-        match future.as_mut().poll(cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => continue,
-        }
     }
 }

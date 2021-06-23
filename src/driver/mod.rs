@@ -1,13 +1,14 @@
 use std::cell::RefCell;
 use std::io;
 use std::mem;
+use std::os::unix::io::RawFd;
 use std::panic;
 use std::rc::Rc;
 use std::task::Waker;
 
-use io_uring::opcode::ProvideBuffers;
+use io_uring::opcode::{PollAdd, ProvideBuffers};
 use io_uring::squeue::Entry;
-use io_uring::{cqueue, IoUring};
+use io_uring::{cqueue, types, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
@@ -48,11 +49,30 @@ pub struct Inner {
     ring: IoUring,
     actions: Slab<State>,
     buffers: Buffers,
+    event_fd: RawFd,
+}
+
+pub fn notify(event_fd: RawFd) {
+    if !CURRENT.is_set() {
+        panic!("`notify` called from outside of a `driver`");
+    }
+
+    let buf: [u8; 8] = 1u64.to_ne_bytes();
+    let _ = syscall!(write(
+        event_fd,
+        &buf[0] as *const u8 as *const libc::c_void,
+        buf.len()
+    ));
 }
 
 impl Driver {
-    pub(crate) fn new() -> io::Result<Driver> {
-        let ring = IoUring::new(256)?;
+    pub fn get_event_fd(&self) -> RawFd {
+        self.inner.borrow().event_fd
+    }
+
+    pub fn new() -> io::Result<Driver> {
+        let mut ring = IoUring::new(256)?;
+        let event_fd = syscall!(eventfd(0, libc::EFD_CLOEXEC | libc::EFD_NONBLOCK))?;
 
         // check if IORING_FEAT_FAST_POLL is supported
         if !ring.params().is_feature_fast_poll() {
@@ -65,28 +85,27 @@ impl Driver {
         if !probe.is_supported(ProvideBuffers::CODE) {
             panic!("buffer selection not supported");
         }
+        let buffers = Buffers::new(DEFAULT_BUFFER_NUM, DEFAULT_BUFFER_SIZE);
+        provide_buffers(&mut ring, &buffers)?;
 
-        let mut driver = Driver {
+        let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
                 actions: Slab::new(),
-                buffers: Buffers::new(DEFAULT_BUFFER_NUM, DEFAULT_BUFFER_SIZE),
+                buffers,
+                event_fd,
             })),
         };
-        driver.provide_buffers()?;
-
         Ok(driver)
     }
 
-    pub(crate) fn wait(&self) -> io::Result<()> {
-        let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
+    pub fn wait(&self) -> io::Result<()> {
+        let inner = &mut *self.inner.borrow_mut();
         let ring = &mut inner.ring;
 
+        poll_add(ring, inner.event_fd)?;
+
         if let Err(e) = ring.submit_and_wait(1) {
-            if e.raw_os_error() == Some(libc::EBUSY) {
-                return Ok(());
-            }
             if e.kind() == io::ErrorKind::Interrupted {
                 return Ok(());
             }
@@ -95,7 +114,6 @@ impl Driver {
 
         let mut cq = ring.completion();
         cq.sync();
-
         for cqe in cq {
             let key = cqe.user_data();
             if key == u64::MAX {
@@ -104,62 +122,74 @@ impl Driver {
             let action = &mut inner.actions[key as usize];
             action.complete(cqe);
         }
+
+        // try read notified
+        let mut buf = [0u8; 8];
+        let _ = syscall!(read(
+            inner.event_fd,
+            &mut buf[0] as *mut u8 as *mut libc::c_void,
+            buf.len()
+        ));
         Ok(())
     }
 
-    pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
+    pub fn with<T>(&self, f: impl FnOnce() -> T) -> T {
         CURRENT.set(self, f)
     }
 
-    fn provide_buffers(&mut self) -> io::Result<()> {
-        let mut inner = self.inner.borrow_mut();
-        let buffers = &inner.buffers;
-        let entry = ProvideBuffers::new(buffers.mem, buffers.size as i32, buffers.num as u16, 0, 0)
-            .build()
-            .user_data(0);
-
-        unsafe {
-            inner
-                .ring
-                .submission()
-                .push(&entry)
-                .expect("push provide_buffers entry fail");
-        }
-
-        inner.ring.submit_and_wait(1)?;
-        for cqe in inner.ring.completion() {
-            let ret = cqe.result();
-            if cqe.user_data() != 0 {
-                panic!("provide_buffers user_data error");
-            }
-            if ret < 0 {
-                panic!("provide_buffers submit error, ret: {}", ret);
-            }
-        }
-        Ok(())
-    }
-
-    pub(crate) fn submit(&self, sqe: Entry) -> io::Result<u64> {
+    pub fn submit(&self, sqe: Entry) -> io::Result<u64> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let key = inner.actions.insert(State::Submitted) as u64;
 
-        if inner.ring.submission().is_full() {
-            inner.ring.submit()?;
-            inner.ring.submission().sync();
+        let ring = &mut inner.ring;
+        if ring.submission().is_full() {
+            ring.submit()?;
+            ring.submission().sync();
         }
 
         let sqe = sqe.user_data(key);
         unsafe {
-            inner
-                .ring
-                .submission()
-                .push(&sqe)
-                .expect("submit entry fail");
+            ring.submission().push(&sqe).expect("push entry fail");
         }
-        inner.ring.submit()?;
+        ring.submit()?;
         Ok(key)
     }
+}
+
+fn poll_add(ring: &mut IoUring, event_fd: RawFd) -> io::Result<()> {
+    let entry = PollAdd::new(types::Fd(event_fd), libc::EPOLLIN as _)
+        .build()
+        .user_data(u64::MAX);
+    if ring.submission().is_full() {
+        ring.submit()?;
+        ring.submission().sync();
+    }
+    unsafe {
+        ring.submission().push(&entry).expect("submit entry fail");
+    }
+    ring.submit()?;
+    Ok(())
+}
+
+fn provide_buffers(ring: &mut IoUring, buffers: &Buffers) -> io::Result<()> {
+    let entry = ProvideBuffers::new(buffers.mem, buffers.size as i32, buffers.num as u16, 0, 0)
+        .build()
+        .user_data(0);
+    unsafe {
+        ring.submission().push(&entry).expect("push entry fail");
+    }
+    ring.submit_and_wait(1)?;
+    for cqe in ring.completion() {
+        let ret = cqe.result();
+        if cqe.user_data() != 0 {
+            panic!("provide_buffers user_data error");
+        }
+        if ret < 0 {
+            panic!("provide_buffers submit error, ret: {}", ret);
+        }
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
