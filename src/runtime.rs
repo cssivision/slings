@@ -1,9 +1,8 @@
-use std::cell::Cell;
 use std::future::Future;
 use std::io;
 use std::task::{Context, Poll};
 
-use crate::driver::{notify, Driver};
+use crate::driver::Driver;
 use crate::local_executor::LocalExecutor;
 use crate::waker_fn::waker_fn;
 
@@ -23,11 +22,9 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> io::Result<Runtime> {
-        let driver = Driver::new()?;
-        let event_fd = driver.event_fd();
         Ok(Runtime {
-            local_executor: LocalExecutor::new(event_fd),
-            driver,
+            local_executor: LocalExecutor::new(),
+            driver: Driver::new()?,
         })
     }
 
@@ -36,16 +33,8 @@ impl Runtime {
         F: Future,
     {
         pin_mut!(future);
-        thread_local! {
-            static IO_BLOCKED: Cell<bool> = Cell::new(false);
-        }
 
-        let event_fd = self.driver.event_fd();
-        let waker = waker_fn(move || {
-            if IO_BLOCKED.with(Cell::get) {
-                notify(event_fd);
-            }
-        });
+        let waker = waker_fn(|| {});
         let cx = &mut Context::from_waker(&waker);
 
         self.driver.with(|| {
@@ -58,10 +47,6 @@ impl Runtime {
                     continue;
                 }
 
-                IO_BLOCKED.with(|io| io.set(true));
-                let _guard = CallOnDrop(|| {
-                    IO_BLOCKED.with(|io| io.set(false));
-                });
                 self.driver.wait().expect("driver wait error");
             })
         })
