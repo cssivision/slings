@@ -106,6 +106,9 @@ impl Driver {
         poll_add(ring, inner.event_fd)?;
 
         if let Err(e) = ring.submit_and_wait(1) {
+            if e.raw_os_error() == Some(libc::EBUSY) {
+                return Ok(());
+            }
             if e.kind() == io::ErrorKind::Interrupted {
                 return Ok(());
             }
