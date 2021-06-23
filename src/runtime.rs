@@ -23,9 +23,11 @@ pub struct Runtime {
 
 impl Runtime {
     pub fn new() -> io::Result<Runtime> {
+        let driver = Driver::new()?;
+        let event_fd = driver.event_fd();
         Ok(Runtime {
-            local_executor: LocalExecutor::new(),
-            driver: Driver::new()?,
+            local_executor: LocalExecutor::new(event_fd),
+            driver,
         })
     }
 
@@ -38,7 +40,7 @@ impl Runtime {
             static IO_BLOCKED: Cell<bool> = Cell::new(false);
         }
 
-        let event_fd = self.driver.get_event_fd();
+        let event_fd = self.driver.event_fd();
         let waker = waker_fn(move || {
             if IO_BLOCKED.with(Cell::get) {
                 notify(event_fd);

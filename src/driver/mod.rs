@@ -53,10 +53,6 @@ pub struct Inner {
 }
 
 pub fn notify(event_fd: RawFd) {
-    if !CURRENT.is_set() {
-        panic!("`notify` called from outside of a `driver`");
-    }
-
     let buf: [u8; 8] = 1u64.to_ne_bytes();
     let _ = syscall!(write(
         event_fd,
@@ -66,7 +62,7 @@ pub fn notify(event_fd: RawFd) {
 }
 
 impl Driver {
-    pub fn get_event_fd(&self) -> RawFd {
+    pub fn event_fd(&self) -> RawFd {
         self.inner.borrow().event_fd
     }
 
