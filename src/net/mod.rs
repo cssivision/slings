@@ -3,3 +3,4 @@ pub mod udp;
 
 pub use tcp::TcpListener;
 pub use tcp::TcpStream;
+pub use udp::UdpSocket;
