@@ -21,7 +21,6 @@ impl<T: AsRawFd> Stream<T> {
                 read_pos: 0,
                 rd: ProvidedBuf::default(),
                 read: Read::Idle,
-                wr: Vec::with_capacity(DEFAULT_BUFFER_SIZE),
                 write: Write::Idle,
             },
         }
@@ -56,7 +55,6 @@ struct Inner {
     rd: ProvidedBuf,
     read_pos: usize,
     read: Read,
-    wr: Vec<u8>,
     write: Write,
 }
 
@@ -75,16 +73,12 @@ impl Inner {
         loop {
             match &mut self.write {
                 Write::Idle => {
-                    let size = buf.len().min(self.wr.capacity());
-                    self.wr.extend_from_slice(&buf[..size]);
-
-                    let action = Action::write(fd, &self.wr[..size])?;
+                    let action = Action::write(fd, buf)?;
                     self.write = Write::Writing(action);
                 }
                 Write::Writing(action) => {
                     let n = ready!(Pin::new(action).poll_write(cx))?;
                     self.write = Write::Idle;
-                    self.wr.clear();
                     return Poll::Ready(Ok(n));
                 }
             }
