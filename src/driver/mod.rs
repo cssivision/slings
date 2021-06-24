@@ -29,7 +29,12 @@ pub mod write;
 
 pub use action::Action;
 use buffers::Buffers;
+pub use packet::Packet;
 pub use read::Read;
+pub use recv::Recv;
+pub use recvmsg::RecvMsg;
+pub use send::Send;
+pub use sendmsg::SendMsg;
 pub use stream::Stream;
 pub use timeout::Timeout;
 pub use write::Write;

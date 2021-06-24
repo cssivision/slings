@@ -13,12 +13,6 @@ pub struct Stream<T> {
     io: T,
 }
 
-impl<T> Stream<T> {
-    pub fn get_ref(&self) -> &T {
-        &self.io
-    }
-}
-
 impl<T: AsRawFd> Stream<T> {
     pub fn new(io: T) -> Stream<T> {
         Stream {
@@ -31,6 +25,10 @@ impl<T: AsRawFd> Stream<T> {
                 write: Write::Idle,
             },
         }
+    }
+
+    pub fn get_ref(&self) -> &T {
+        &self.io
     }
 
     pub fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {

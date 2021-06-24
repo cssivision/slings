@@ -1,14 +1,12 @@
 use std::io;
 use std::net::{self, SocketAddr, ToSocketAddrs};
-use std::os::unix::io::AsRawFd;
 
 use futures_util::future::poll_fn;
 
-use crate::driver::Action;
+use crate::driver::Packet;
 
-#[derive(Debug)]
 pub struct UdpSocket {
-    inner: net::UdpSocket,
+    inner: Packet<net::UdpSocket>,
 }
 
 impl UdpSocket {
@@ -22,7 +20,6 @@ impl UdpSocket {
                 Err(e) => last_err = Some(e),
             }
         }
-
         Err(last_err.unwrap_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -33,7 +30,7 @@ impl UdpSocket {
 
     fn bind_addr(addr: SocketAddr) -> io::Result<UdpSocket> {
         Ok(UdpSocket {
-            inner: net::UdpSocket::bind(addr)?,
+            inner: Packet::new(net::UdpSocket::bind(addr)?),
         })
     }
 
@@ -42,12 +39,11 @@ impl UdpSocket {
         let mut last_err = None;
 
         for addr in addrs {
-            match self.inner.connect(addr) {
+            match self.inner.get_ref().connect(addr) {
                 Ok(_) => return Ok(()),
                 Err(e) => last_err = Some(e),
             }
         }
-
         Err(last_err.unwrap_or_else(|| {
             io::Error::new(
                 io::ErrorKind::InvalidInput,
@@ -57,23 +53,19 @@ impl UdpSocket {
     }
 
     pub async fn recv(&self, buf: &mut [u8]) -> io::Result<usize> {
-        let mut action = Action::recv(self.inner.as_raw_fd(), buf.len() as _)?;
-        poll_fn(|cx| action.poll_recv(cx, buf)).await
+        poll_fn(|cx| self.inner.poll_recv(cx, buf)).await
     }
 
     pub async fn send(&self, buf: &[u8]) -> io::Result<usize> {
-        let mut action = Action::send(self.inner.as_raw_fd(), buf)?;
-        poll_fn(|cx| action.poll_send(cx)).await
+        poll_fn(|cx| self.inner.poll_send(cx, buf)).await
     }
 
     pub async fn recv_from(&self, buf: &mut [u8]) -> io::Result<(usize, SocketAddr)> {
-        let mut action = Action::recvmsg(self.inner.as_raw_fd(), buf.len())?;
-        poll_fn(|cx| action.poll_recv_from(cx, buf)).await
+        poll_fn(|cx| self.inner.poll_recv_from(cx, buf)).await
     }
 
     pub async fn send_to<A: Into<SocketAddr>>(&self, buf: &[u8], target: A) -> io::Result<usize> {
         let addr = target.into();
-        let mut action = Action::sendmsg(self.inner.as_raw_fd(), buf, &addr)?;
-        poll_fn(|cx| action.poll_send_to(cx)).await
+        poll_fn(|cx| self.inner.poll_send_to(cx, buf, &addr)).await
     }
 }
