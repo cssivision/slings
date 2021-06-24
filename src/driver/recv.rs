@@ -9,22 +9,20 @@ use io_uring::cqueue::buffer_select;
 use io_uring::squeue::Flags;
 use io_uring::{opcode, types};
 
-use crate::driver::buffers::ProvidedBuf;
 use crate::driver::Action;
 
-pub struct Read;
+pub struct Recv;
 
-impl Action<Read> {
-    pub fn read(fd: RawFd, len: u32) -> io::Result<Action<Read>> {
-        let entry = opcode::Read::new(types::Fd(fd), ptr::null_mut(), len)
+impl Action<Recv> {
+    pub fn recv(fd: RawFd, len: u32) -> io::Result<Action<Recv>> {
+        let entry = opcode::Recv::new(types::Fd(fd), ptr::null_mut(), len)
             .buf_group(0)
             .build()
             .flags(Flags::BUFFER_SELECT);
-
-        Action::submit(Read, entry)
+        Action::submit(Recv, entry)
     }
 
-    pub fn poll_read(&mut self, cx: &mut Context) -> Poll<io::Result<ProvidedBuf>> {
+    pub fn poll_recv(&mut self, cx: &mut Context, rd: &mut [u8]) -> Poll<io::Result<usize>> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let n = completion.result?;
         let bid = buffer_select(completion.flags).expect("buffer_select unimplemented");
@@ -36,6 +34,8 @@ impl Action<Read> {
             provided_buf
         };
 
-        Poll::Ready(Ok(buf))
+        let n = buf.len().min(rd.len());
+        rd[..n].copy_from_slice(&buf[..n]);
+        Poll::Ready(Ok(n))
     }
 }
