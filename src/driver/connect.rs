@@ -25,7 +25,7 @@ impl Action<Connect> {
 }
 
 impl Connect {
-    pub fn get_sock(&self, result: io::Result<i32>) -> io::Result<RawFd> {
+    pub fn get_socket(&self, result: io::Result<i32>) -> io::Result<RawFd> {
         match result {
             Err(err) if err.raw_os_error() != Some(libc::EINPROGRESS) => Err(err),
             _ => Ok(self.fd),

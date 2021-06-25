@@ -34,6 +34,10 @@ impl UdpSocket {
         })
     }
 
+    pub fn local_addr(&self) -> io::Result<SocketAddr> {
+        self.inner.get_ref().local_addr()
+    }
+
     pub fn connect<A: ToSocketAddrs>(&self, addr: A) -> io::Result<()> {
         let addrs = addr.to_socket_addrs()?;
         let mut last_err = None;

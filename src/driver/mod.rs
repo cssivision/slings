@@ -259,17 +259,12 @@ fn socket_addr(addr: &SocketAddr) -> (SockAddrIn, libc::socklen_t) {
     }
 }
 
-fn cmsghdr(msg_name: *mut libc::sockaddr_storage, buf: &mut [u8]) -> libc::msghdr {
+fn cmsghdr(msg_name: *mut libc::sockaddr_storage, iovec: *mut libc::iovec) -> libc::msghdr {
     let msg_namelen = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
     let mut msg: libc::msghdr = unsafe { mem::zeroed() };
     msg.msg_name = msg_name.cast();
     msg.msg_namelen = msg_namelen;
-    let iovec = libc::iovec {
-        iov_base: buf.as_mut_ptr().cast(),
-        iov_len: buf.len(),
-    };
-    let bufs = unsafe { std::slice::from_raw_parts_mut(iovec.iov_base.cast(), iovec.iov_len) };
-    msg.msg_iov = bufs.as_mut_ptr();
-    msg.msg_iovlen = bufs.len();
+    msg.msg_iov = iovec;
+    msg.msg_iovlen = 1;
     msg
 }

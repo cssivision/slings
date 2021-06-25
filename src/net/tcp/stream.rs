@@ -27,7 +27,7 @@ impl TcpStream {
 
     async fn connect_addr(addr: SocketAddr) -> io::Result<TcpStream> {
         let completion = Action::connect(addr)?.await;
-        let fd = completion.action.get_sock(completion.result)?;
+        let fd = completion.action.get_socket(completion.result)?;
         Ok(TcpStream::from_std(unsafe {
             net::TcpStream::from_raw_fd(fd)
         }))

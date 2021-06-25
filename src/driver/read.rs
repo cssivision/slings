@@ -20,7 +20,6 @@ impl Action<Read> {
             .buf_group(0)
             .build()
             .flags(Flags::BUFFER_SELECT);
-
         Action::submit(Read, entry)
     }
 
@@ -35,7 +34,6 @@ impl Action<Read> {
             provided_buf.set_len(n as usize);
             provided_buf
         };
-
         Poll::Ready(Ok(buf))
     }
 }
