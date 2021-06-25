@@ -18,7 +18,6 @@ impl<T> Action<T> {
     pub fn submit(action: T, entry: Entry) -> io::Result<Action<T>> {
         driver::CURRENT.with(|driver| {
             let key = driver.submit(entry)?;
-
             Ok(Action {
                 driver: driver.clone(),
                 action: Some(action),
@@ -55,7 +54,6 @@ where
             }
             State::Completed(cqe) => {
                 inner.actions.remove(key);
-
                 let result = if cqe.result() >= 0 {
                     Ok(cqe.result())
                 } else {
@@ -63,7 +61,6 @@ where
                 };
                 let flags = cqe.flags();
                 let action = me.action.take().expect("action can not be None");
-
                 Poll::Ready(Completion {
                     action,
                     result,

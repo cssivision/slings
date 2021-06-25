@@ -118,7 +118,7 @@ impl Inner {
         loop {
             match &mut self.recv {
                 Recv::Idle => {
-                    let action = Action::recv(fd, buf.len() as u32)?;
+                    let action = Action::recv(fd, buf.len())?;
                     self.recv = Recv::Recving(action);
                 }
                 Recv::Recving(action) => {

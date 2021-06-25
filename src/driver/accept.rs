@@ -13,7 +13,6 @@ impl Action<Accept> {
         let entry = opcode::Accept::new(types::Fd(fd), ptr::null_mut(), ptr::null_mut())
             .flags(libc::SOCK_CLOEXEC)
             .build();
-
         Action::submit(Accept, entry)
     }
 }

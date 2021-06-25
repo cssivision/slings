@@ -17,7 +17,6 @@ impl Action<Connect> {
             SocketAddr::V4(_) => new_v4_socket(),
             SocketAddr::V6(_) => new_v6_socket(),
         }?;
-
         let entry =
             opcode::Connect::new(types::Fd(fd), sockaddr.as_ptr() as *mut _, socklen).build();
         Action::submit(Connect { fd }, entry)
