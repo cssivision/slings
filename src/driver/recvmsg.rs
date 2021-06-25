@@ -1,6 +1,6 @@
 use std::future::Future;
 use std::io;
-use std::mem::{self, MaybeUninit};
+use std::mem::MaybeUninit;
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
@@ -9,33 +9,21 @@ use std::task::{Context, Poll};
 use io_uring::{opcode, types};
 
 use crate::driver::Action;
-use crate::driver::{cmsghdr, to_socket_addr};
+use crate::driver::{cmsghdr, to_socket_addr, MaybeUninitSlice};
 
 pub struct RecvMsg {
     storage: Box<MaybeUninit<libc::sockaddr_storage>>,
-    msghdr: libc::msghdr,
-    _iovec: libc::iovec,
     buf: Vec<u8>,
 }
 
 impl Action<RecvMsg> {
     pub fn recvmsg(fd: RawFd, len: usize) -> io::Result<Action<RecvMsg>> {
-        let mut storage = Box::new(mem::MaybeUninit::<libc::sockaddr_storage>::zeroed());
-        let buf = Vec::with_capacity(len);
-        let iovec = libc::iovec {
-            iov_base: &buf as *const _ as _,
-            iov_len: len,
-        };
-        let bufs = unsafe { std::slice::from_raw_parts_mut(iovec.iov_base.cast(), iovec.iov_len) };
-        let msghdr = cmsghdr(storage.as_mut_ptr() as *mut _, bufs.as_mut_ptr());
-        let mut recv_msg = RecvMsg {
-            storage,
-            msghdr,
-            buf,
-            _iovec: iovec,
-        };
-        let entry = opcode::RecvMsg::new(types::Fd(fd), &mut recv_msg.msghdr as *mut _).build();
-        Action::submit(recv_msg, entry)
+        let mut storage = Box::new(MaybeUninit::<libc::sockaddr_storage>::zeroed());
+        let mut buf = Vec::with_capacity(len);
+        let mut iovec = [MaybeUninitSlice::new(&mut buf, len)];
+        let mut msghdr = cmsghdr(storage.as_mut_ptr() as *mut _, &mut iovec);
+        let entry = opcode::RecvMsg::new(types::Fd(fd), &mut msghdr as *mut _).build();
+        Action::submit(RecvMsg { storage, buf }, entry)
     }
 
     pub fn poll_recv_from(

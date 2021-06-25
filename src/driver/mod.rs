@@ -1,10 +1,11 @@
 use std::cell::RefCell;
 use std::io;
-use std::mem;
-use std::mem::size_of;
+use std::mem::{self, size_of, MaybeUninit};
 use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::ops::{Deref, DerefMut};
 use std::panic;
 use std::rc::Rc;
+use std::slice;
 use std::task::Waker;
 
 use io_uring::opcode::ProvideBuffers;
@@ -259,12 +260,50 @@ fn socket_addr(addr: &SocketAddr) -> (SockAddrIn, libc::socklen_t) {
     }
 }
 
-fn cmsghdr(msg_name: *mut libc::sockaddr_storage, iovec: *mut libc::iovec) -> libc::msghdr {
+fn cmsghdr(msg_name: *mut libc::sockaddr_storage, bufs: &mut [MaybeUninitSlice]) -> libc::msghdr {
     let msg_namelen = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
     let mut msg: libc::msghdr = unsafe { mem::zeroed() };
     msg.msg_name = msg_name.cast();
     msg.msg_namelen = msg_namelen;
-    msg.msg_iov = iovec;
-    msg.msg_iovlen = 1;
+    msg.msg_iov = bufs.as_mut_ptr().cast();
+    msg.msg_iovlen = bufs.len();
     msg
+}
+
+#[repr(transparent)]
+struct MaybeUninitSlice {
+    vec: libc::iovec,
+}
+
+impl<'a> MaybeUninitSlice {
+    pub(crate) fn new(buf: &mut [u8], len: usize) -> MaybeUninitSlice {
+        MaybeUninitSlice {
+            vec: libc::iovec {
+                iov_base: buf.as_mut_ptr().cast(),
+                iov_len: len,
+            },
+        }
+    }
+
+    pub(crate) fn as_slice(&self) -> &[MaybeUninit<u8>] {
+        unsafe { slice::from_raw_parts(self.vec.iov_base.cast(), self.vec.iov_len) }
+    }
+
+    pub(crate) fn as_mut_slice(&mut self) -> &mut [MaybeUninit<u8>] {
+        unsafe { slice::from_raw_parts_mut(self.vec.iov_base.cast(), self.vec.iov_len) }
+    }
+}
+
+impl Deref for MaybeUninitSlice {
+    type Target = [MaybeUninit<u8>];
+
+    fn deref(&self) -> &[MaybeUninit<u8>] {
+        self.as_slice()
+    }
+}
+
+impl DerefMut for MaybeUninitSlice {
+    fn deref_mut(&mut self) -> &mut [MaybeUninit<u8>] {
+        self.as_mut_slice()
+    }
 }
