@@ -11,12 +11,6 @@ pub struct Timeout {
     spec: types::Timespec,
 }
 
-pub enum State {
-    Elapsed,
-    Canceled,
-    Link,
-}
-
 impl Action<Timeout> {
     pub fn timeout(sec: u64, nsec: u32) -> io::Result<Action<Timeout>> {
         let timeout = Timeout {
@@ -26,26 +20,17 @@ impl Action<Timeout> {
         Action::submit(timeout, entry)
     }
 
-    pub fn poll_timeout(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<State>> {
+    pub fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let result = completion.result;
 
         match result {
-            Err(err) if err.raw_os_error() == Some(libc::ETIME) => Poll::Ready(Ok(State::Elapsed)),
-            Err(err) if err.raw_os_error() == Some(libc::ECANCELED) => {
-                Poll::Ready(Ok(State::Canceled))
-            }
+            Err(err) if err.raw_os_error() == Some(libc::ETIME) => Poll::Ready(Ok(())),
             Err(err) => Poll::Ready(Err(err)),
-            Ok(n) => {
-                if n == 0 {
-                    Poll::Ready(Ok(State::Link))
-                } else {
-                    Poll::Ready(Err(io::Error::new(
-                        io::ErrorKind::TimedOut,
-                        format!("result {}", n),
-                    )))
-                }
-            }
+            Ok(n) => Poll::Ready(Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                format!("result {}", n),
+            ))),
         }
     }
 }
