@@ -40,7 +40,7 @@ pub use stream::Stream;
 pub use timeout::Timeout;
 pub use write::Write;
 
-pub const DEFAULT_BUFFER_SIZE: usize = 2048;
+pub const DEFAULT_BUFFER_SIZE: usize = 4096;
 const DEFAULT_BUFFER_NUM: usize = 1024;
 
 scoped_thread_local!(static CURRENT: Driver);
