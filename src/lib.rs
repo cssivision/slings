@@ -41,7 +41,18 @@ pub mod runtime;
 pub mod time;
 mod waker_fn;
 
+use std::future::Future;
+
 pub use local_executor::spawn_local;
+pub use runtime::Runtime;
 
 pub use async_task::Task;
 pub use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
+
+pub fn block_on<F>(future: F) -> F::Output
+where
+    F: Future,
+{
+    let runtime = Runtime::new().expect("new runtime fail");
+    runtime.block_on(future)
+}

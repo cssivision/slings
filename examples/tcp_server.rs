@@ -3,13 +3,11 @@ use std::net::SocketAddr;
 use std::time::Duration;
 
 use slings::net::TcpListener;
-use slings::runtime::Runtime;
 use slings::time::delay_for;
 use slings::AsyncWriteExt;
 
 fn main() -> io::Result<()> {
-    let runtime = Runtime::new()?;
-    runtime.block_on(async {
+    slings::block_on(async {
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
         let listener = TcpListener::bind(addr).await.unwrap();
         println!("server start listen on 127.0.0.1:8080");

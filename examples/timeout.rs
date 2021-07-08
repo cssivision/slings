@@ -2,13 +2,11 @@ use std::io;
 use std::time::Duration;
 
 use slings::net::TcpStream;
-use slings::runtime::Runtime;
 use slings::time::timeout;
 use slings::AsyncReadExt;
 
 fn main() -> io::Result<()> {
-    let runtime = Runtime::new()?;
-    runtime.block_on(async {
+    slings::block_on(async {
         match timeout(Duration::from_secs(1), TcpStream::connect("127.0.0.1:8080")).await {
             Ok(stream) => match stream {
                 Ok(mut stream) => {

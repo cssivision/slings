@@ -2,13 +2,11 @@ use std::io;
 use std::time::Duration;
 
 use slings::net::TcpStream;
-use slings::runtime::Runtime;
 use slings::time::delay_for;
 use slings::AsyncReadExt;
 
 fn main() -> io::Result<()> {
-    let runtime = Runtime::new()?;
-    runtime.block_on(async {
+    slings::block_on(async {
         let mut stream = TcpStream::connect("127.0.0.1:8080").await.unwrap();
         let mut buf = vec![0; 10];
         loop {
