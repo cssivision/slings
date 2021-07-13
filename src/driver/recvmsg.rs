@@ -36,7 +36,7 @@ impl Action<RecvMsg> {
         let mut action = completion.action;
         unsafe { action.buf.set_len(n) };
         buf[..n].copy_from_slice(&action.buf[..n]);
-        let addr = unsafe { to_socket_addr(action.storage.as_mut_ptr() as *const _)? };
+        let addr = unsafe { to_socket_addr(&(*action.storage).assume_init() as *const _)? };
         Poll::Ready(Ok((n, addr)))
     }
 }
