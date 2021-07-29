@@ -100,10 +100,10 @@ impl Inner {
                 }
                 Read::Reading(action) => {
                     self.rd = ready!(Pin::new(action).poll_read(cx))?;
-                    if self.rd.is_empty() {
-                        return Poll::Ready(Ok(&self.rd[self.read_pos..]));
-                    }
                     self.read = Read::Idle;
+                    if self.rd.is_empty() {
+                        return Poll::Ready(Err(io::ErrorKind::UnexpectedEof.into()));
+                    }
                 }
             }
         }
