@@ -27,7 +27,7 @@ impl Action<Read> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let n = completion.result?;
         let bid = buffer_select(completion.flags).expect("buffer_select unimplemented");
-        let driver = self.driver.inner.borrow();
+        let mut driver = self.driver.inner.borrow_mut();
 
         let buf = unsafe {
             let mut provided_buf = driver.buffers.select(bid, self.driver.clone());
