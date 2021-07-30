@@ -64,7 +64,6 @@ impl Drop for ProvidedBuf {
                 ring.submission().push(&entry).expect("push entry fail");
             }
             ring.submit().expect("submit entry fail");
-            println!("bid: {}", self.bid);
         }
     }
 }
