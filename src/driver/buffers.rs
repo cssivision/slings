@@ -29,6 +29,7 @@ impl Buffers {
         ProvidedBuf {
             buf,
             driver: Some(driver),
+            bid,
         }
     }
 }
@@ -36,6 +37,7 @@ impl Buffers {
 pub struct ProvidedBuf {
     buf: ManuallyDrop<Vec<u8>>,
     driver: Option<Driver>,
+    bid: u16,
 }
 
 impl ProvidedBuf {
@@ -50,8 +52,7 @@ impl Drop for ProvidedBuf {
             let mut driver = driver.inner.borrow_mut();
             let buffers = &driver.buffers;
             let ptr = self.buf.as_mut_ptr();
-            let bid = (ptr as usize - buffers.mem as usize) / buffers.size;
-            let entry = opcode::ProvideBuffers::new(ptr, buffers.size as _, 1, 0, bid as _)
+            let entry = opcode::ProvideBuffers::new(ptr, buffers.size as _, 1, 0, self.bid)
                 .build()
                 .user_data(u64::MAX);
 
@@ -73,6 +74,7 @@ impl Default for ProvidedBuf {
         ProvidedBuf {
             buf: ManuallyDrop::new(Vec::new()),
             driver: None,
+            bid: 0,
         }
     }
 }
