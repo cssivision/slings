@@ -5,6 +5,8 @@ use io_uring::opcode;
 
 use crate::driver::Driver;
 
+pub const GROUP_ID: u16 = 1337;
+
 #[derive(Debug)]
 pub struct Buffers {
     pub size: usize,
@@ -52,9 +54,15 @@ impl Drop for ProvidedBuf {
             let driver = &mut *driver.inner.borrow_mut();
             let ring = &mut driver.ring;
             let buffers = &mut driver.buffers;
-            let entry = opcode::ProvideBuffers::new(buffers.mem, buffers.size as _, 1, 0, self.bid)
-                .build()
-                .user_data(u64::MAX);
+            let entry = opcode::ProvideBuffers::new(
+                self.buf.as_mut_ptr(),
+                buffers.size as _,
+                1,
+                GROUP_ID,
+                self.bid,
+            )
+            .build()
+            .user_data(u64::MAX);
 
             if ring.submission().is_full() {
                 ring.submit().expect("submit entry fail");

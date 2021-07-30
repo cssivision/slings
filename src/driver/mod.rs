@@ -29,7 +29,7 @@ pub mod timeout;
 pub mod write;
 
 pub use action::Action;
-use buffers::Buffers;
+use buffers::{Buffers, GROUP_ID};
 pub use packet::Packet;
 pub use read::Read;
 pub use recv::Recv;
@@ -40,8 +40,8 @@ pub use stream::Stream;
 pub use timeout::Timeout;
 pub use write::Write;
 
-pub const DEFAULT_BUFFER_SIZE: usize = 4096;
-const DEFAULT_BUFFER_NUM: usize = 1024;
+pub const DEFAULT_BUFFER_SIZE: usize = 2048;
+const DEFAULT_BUFFER_NUM: usize = 2048;
 
 scoped_thread_local!(static CURRENT: Driver);
 
@@ -144,9 +144,15 @@ impl Driver {
 }
 
 fn provide_buffers(ring: &mut IoUring, buffers: &Buffers) -> io::Result<()> {
-    let entry = ProvideBuffers::new(buffers.mem, buffers.size as i32, buffers.num as u16, 0, 0)
-        .build()
-        .user_data(0);
+    let entry = ProvideBuffers::new(
+        buffers.mem,
+        buffers.size as i32,
+        buffers.num as u16,
+        GROUP_ID,
+        0,
+    )
+    .build()
+    .user_data(0);
     unsafe {
         ring.submission().push(&entry).expect("push entry fail");
     }
