@@ -64,14 +64,9 @@ impl Drop for ProvidedBuf {
             .build()
             .user_data(u64::MAX);
 
-            if ring.submission().is_full() {
-                ring.submit().expect("submit entry fail");
-                ring.submission().sync();
-            }
             unsafe {
                 ring.submission().push(&entry).expect("push entry fail");
             }
-            ring.submit().expect("submit entry fail");
         }
     }
 }
