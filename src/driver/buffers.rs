@@ -1,7 +1,6 @@
 use std::mem::ManuallyDrop;
 use std::ops;
 
-use bit_vec::BitVec;
 use io_uring::opcode;
 
 use crate::driver::Driver;
@@ -11,7 +10,6 @@ pub struct Buffers {
     pub size: usize,
     pub num: usize,
     pub mem: *mut u8,
-    bv: BitVec,
 }
 
 impl Buffers {
@@ -22,17 +20,12 @@ impl Buffers {
             mem: mem.as_mut_ptr(),
             num,
             size,
-            bv: BitVec::from_elem(num, false),
         }
     }
 
     pub unsafe fn select(&mut self, bid: u16, driver: Driver) -> ProvidedBuf {
         let ptr = self.mem.add(self.size * bid as usize);
         let buf = ManuallyDrop::new(Vec::from_raw_parts(ptr, 0, self.size));
-        if self.bv.get(bid as usize).unwrap_or_else(|| false) {
-            panic!("buffer {} has selected", bid);
-        }
-        self.bv.set(bid as usize, true);
         ProvidedBuf {
             buf,
             driver: Some(driver),
@@ -59,12 +52,7 @@ impl Drop for ProvidedBuf {
             let driver = &mut *driver.inner.borrow_mut();
             let ring = &mut driver.ring;
             let buffers = &mut driver.buffers;
-            let selected = buffers.bv.get(self.bid as usize).unwrap_or_else(|| false);
-            if !selected {
-                panic!("buffer {} not selected", self.bid);
-            }
-            let ptr = self.buf.as_mut_ptr();
-            let entry = opcode::ProvideBuffers::new(ptr, buffers.size as _, 1, 0, self.bid)
+            let entry = opcode::ProvideBuffers::new(buffers.mem, buffers.size as _, 1, 0, self.bid)
                 .build()
                 .user_data(u64::MAX);
 
@@ -76,7 +64,7 @@ impl Drop for ProvidedBuf {
                 ring.submission().push(&entry).expect("push entry fail");
             }
             ring.submit().expect("submit entry fail");
-            buffers.bv.set(self.bid as usize, false);
+            println!("bid: {}", self.bid);
         }
     }
 }
