@@ -25,7 +25,7 @@ impl Buffers {
         }
     }
 
-    pub unsafe fn select(&mut self, bid: u16, driver: Driver) -> ProvidedBuf {
+    pub unsafe fn _select(&mut self, bid: u16, driver: Driver) -> ProvidedBuf {
         let ptr = self.mem.add(self.size * bid as usize);
         let buf = ManuallyDrop::new(Vec::from_raw_parts(ptr, 0, self.size));
         ProvidedBuf {
@@ -40,12 +40,6 @@ pub struct ProvidedBuf {
     buf: ManuallyDrop<Vec<u8>>,
     driver: Option<Driver>,
     bid: u16,
-}
-
-impl ProvidedBuf {
-    pub unsafe fn set_len(&mut self, new_len: usize) {
-        self.buf.set_len(new_len);
-    }
 }
 
 impl Drop for ProvidedBuf {

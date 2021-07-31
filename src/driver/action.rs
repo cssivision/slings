@@ -64,7 +64,7 @@ where
                 Poll::Ready(Completion {
                     action,
                     result,
-                    flags,
+                    _flags: flags,
                 })
             }
         }
@@ -74,5 +74,5 @@ where
 pub struct Completion<T> {
     pub(crate) action: T,
     pub(crate) result: io::Result<i32>,
-    pub(crate) flags: u32,
+    pub(crate) _flags: u32,
 }
