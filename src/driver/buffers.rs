@@ -25,7 +25,7 @@ impl Buffers {
         }
     }
 
-    pub unsafe fn _select(&mut self, bid: u16, driver: Driver) -> ProvidedBuf {
+    pub unsafe fn select(&mut self, bid: u16, driver: Driver) -> ProvidedBuf {
         let ptr = self.mem.add(self.size * bid as usize);
         let buf = ManuallyDrop::new(Vec::from_raw_parts(ptr, 0, self.size));
         ProvidedBuf {
