@@ -3,8 +3,11 @@ use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
+use io_uring::cqueue::buffer_select;
+use io_uring::opcode;
+
 use crate::driver::buffers::ProvidedBuf;
-use crate::driver::{self, Action};
+use crate::driver::{self, Action, State};
 
 use crate::driver::DEFAULT_BUFFER_SIZE;
 
@@ -66,6 +69,37 @@ enum Write {
 enum Read {
     Idle,
     Reading(Action<driver::Read>),
+}
+
+impl Drop for Read {
+    fn drop(&mut self) {
+        if let Read::Reading(action) = self {
+            driver::CURRENT.with(|driver_currnet| {
+                let mut driver = driver_currnet.inner.borrow_mut();
+                if let Some(state) = driver.actions.get(action.key as usize) {
+                    if let State::Completed(cqe) = state {
+                        if let Some(bid) = buffer_select(cqe.flags()) {
+                            unsafe { driver.buffers.select(bid, driver_currnet.clone()) };
+                            return;
+                        }
+                    }
+                }
+
+                let ring = &mut driver.ring;
+                if ring.submission().is_full() {
+                    ring.submit().expect("submit fail");
+                    ring.submission().sync();
+                }
+                let sqe = opcode::AsyncCancel::new(action.key)
+                    .build()
+                    .user_data(u64::MAX);
+                unsafe {
+                    ring.submission().push(&sqe).expect("push entry fail");
+                }
+                ring.submit().expect("submit fail");
+            });
+        }
+    }
 }
 
 impl Inner {

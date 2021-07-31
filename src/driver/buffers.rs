@@ -52,7 +52,6 @@ impl Drop for ProvidedBuf {
     fn drop(&mut self) {
         if let Some(driver) = self.driver.take() {
             let driver = &mut *driver.inner.borrow_mut();
-            let ring = &mut driver.ring;
             let buffers = &mut driver.buffers;
             let entry = opcode::ProvideBuffers::new(
                 self.buf.as_mut_ptr(),
@@ -64,9 +63,15 @@ impl Drop for ProvidedBuf {
             .build()
             .user_data(u64::MAX);
 
+            let ring = &mut driver.ring;
+            if ring.submission().is_full() {
+                ring.submit().expect("submit fail");
+                ring.submission().sync();
+            }
             unsafe {
                 ring.submission().push(&entry).expect("push entry fail");
             }
+            ring.submit().expect("submit fail");
         }
     }
 }

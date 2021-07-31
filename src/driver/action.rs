@@ -11,7 +11,7 @@ use crate::driver::{self, Driver, State};
 pub struct Action<T> {
     pub driver: Driver,
     pub action: Option<T>,
-    key: u64,
+    pub key: u64,
 }
 
 impl<T> Action<T> {
