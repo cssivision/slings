@@ -25,15 +25,21 @@ impl Action<Read> {
 
     pub fn poll_read(&mut self, cx: &mut Context) -> Poll<io::Result<ProvidedBuf>> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
-        let n = completion.result?;
-        let bid = buffer_select(completion.flags).expect("buffer_select unimplemented");
-        let mut driver = self.driver.inner.borrow_mut();
-
-        let buf = unsafe {
-            let mut provided_buf = driver.buffers.select(bid, self.driver.clone());
-            provided_buf.set_len(n as usize);
-            provided_buf
+        let buf = match buffer_select(completion.flags) {
+            Some(bid) => {
+                let mut driver = self.driver.inner.borrow_mut();
+                Some(unsafe { driver.buffers.select(bid, self.driver.clone()) })
+            }
+            None => None,
         };
-        Poll::Ready(Ok(buf))
+        let n = completion.result?;
+        if let Some(mut buf) = buf {
+            unsafe { buf.set_len(n as usize) };
+            return Poll::Ready(Ok(buf));
+        }
+        Poll::Ready(Err(io::Error::new(
+            io::ErrorKind::Other,
+            "unexpect poll_read branch",
+        )))
     }
 }
