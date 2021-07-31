@@ -8,7 +8,6 @@ use std::rc::Rc;
 use std::slice;
 use std::task::Waker;
 
-use io_uring::opcode::ProvideBuffers;
 use io_uring::squeue::Entry;
 use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
@@ -16,7 +15,6 @@ use slab::Slab;
 
 pub mod accept;
 pub mod action;
-pub mod buffers;
 pub mod connect;
 pub mod packet;
 pub mod read;
@@ -29,7 +27,6 @@ pub mod timeout;
 pub mod write;
 
 pub use action::Action;
-use buffers::{Buffers, GROUP_ID};
 pub use packet::Packet;
 pub use read::Read;
 pub use recv::Recv;
@@ -41,7 +38,6 @@ pub use timeout::Timeout;
 pub use write::Write;
 
 pub const DEFAULT_BUFFER_SIZE: usize = 4096;
-const DEFAULT_BUFFER_NUM: usize = 1;
 
 scoped_thread_local!(static CURRENT: Driver);
 
@@ -60,32 +56,21 @@ impl Clone for Driver {
 pub struct Inner {
     ring: IoUring,
     actions: Slab<State>,
-    buffers: Buffers,
+    // buffers: Buffers,
 }
 
 impl Driver {
     pub fn new() -> io::Result<Driver> {
-        let mut ring = IoUring::new(256)?;
-
+        let ring = IoUring::new(256)?;
         // check if IORING_FEAT_FAST_POLL is supported
         if !ring.params().is_feature_fast_poll() {
             panic!("IORING_FEAT_FAST_POLL not supported");
         }
 
-        // check if buffer selection is supported
-        let mut probe = io_uring::Probe::new();
-        ring.submitter().register_probe(&mut probe).unwrap();
-        if !probe.is_supported(ProvideBuffers::CODE) {
-            panic!("buffer selection not supported");
-        }
-        let buffers = Buffers::new(DEFAULT_BUFFER_NUM, DEFAULT_BUFFER_SIZE);
-        provide_buffers(&mut ring, &buffers)?;
-
         let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
                 actions: Slab::new(),
-                buffers,
             })),
         };
         Ok(driver)
@@ -141,32 +126,6 @@ impl Driver {
         ring.submit()?;
         Ok(key)
     }
-}
-
-fn provide_buffers(ring: &mut IoUring, buffers: &Buffers) -> io::Result<()> {
-    let entry = ProvideBuffers::new(
-        buffers.mem,
-        buffers.size as i32,
-        buffers.num as u16,
-        GROUP_ID,
-        0,
-    )
-    .build()
-    .user_data(0);
-    unsafe {
-        ring.submission().push(&entry).expect("push entry fail");
-    }
-    ring.submit_and_wait(1)?;
-    for cqe in ring.completion() {
-        let ret = cqe.result();
-        if cqe.user_data() != 0 {
-            panic!("provide_buffers user_data error");
-        }
-        if ret < 0 {
-            panic!("provide_buffers submit error, ret: {}", ret);
-        }
-    }
-    Ok(())
 }
 
 #[derive(Debug)]
