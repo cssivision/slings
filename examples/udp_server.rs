@@ -10,17 +10,9 @@ fn main() -> io::Result<()> {
         println!("udp bind on 127.0.0.1:8081");
         let mut buf = vec![0; 10];
         loop {
-            match socket.recv_from(&mut buf).await {
-                Ok((n, addr)) => {
-                    println!("recv bytes {:?} from {}", &buf[..n], addr);
-                }
-                Err(e) => {
-                    println!("read fail {}", e);
-                    break;
-                }
-            }
+            let (n, addr) = socket.recv_from(&mut buf).await?;
+            println!("recv bytes {:?} from {}", &buf[..n], addr);
             delay_for(Duration::from_secs(1)).await;
         }
-    });
-    Ok(())
+    })
 }
