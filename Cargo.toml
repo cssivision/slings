@@ -9,7 +9,7 @@ description = "A small async runtime based on io-uring for Rust"
 edition = "2018"
 
 [dependencies]
-io-uring = { version = "0.5", features = ["unstable"] }
+io-uring = { git = "https://github.com/tokio-rs/io-uring", rev = "7f7b62d", features = ["unstable"] }
 async-task = "4.0"
 scoped-tls = "1.0"
 slab = "0.4"
