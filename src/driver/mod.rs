@@ -231,7 +231,7 @@ fn cmsghdr(msg_name: *mut libc::sockaddr_storage, bufs: &mut [MaybeUninitSlice])
     msg.msg_name = msg_name.cast();
     msg.msg_namelen = msg_namelen;
     msg.msg_iov = bufs.as_mut_ptr().cast();
-    msg.msg_iovlen = bufs.len();
+    msg.msg_iovlen = bufs.len() as _;
     msg
 }
 
