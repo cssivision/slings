@@ -8,10 +8,10 @@ use io_uring::squeue::Entry;
 
 use crate::driver::{self, Driver, State};
 
-pub struct Action<T> {
+pub struct Action<T: 'static> {
     pub driver: Driver,
     pub action: Option<T>,
-    pub key: u64,
+    pub key: usize,
 }
 
 impl<T> Action<T> {
@@ -27,6 +27,26 @@ impl<T> Action<T> {
     }
 }
 
+impl<T> Drop for Action<T> {
+    fn drop(&mut self) {
+        let mut inner = self.driver.inner.borrow_mut();
+        let state = match inner.actions.get_mut(self.key) {
+            Some(s) => s,
+            None => return,
+        };
+
+        match state {
+            State::Submitted | State::Waiting(_) => {
+                *state = State::Ignored(Box::new(self.action.take()));
+            }
+            State::Completed(..) => {
+                inner.actions.remove(self.key);
+            }
+            State::Ignored(..) => unreachable!(),
+        }
+    }
+}
+
 impl<T> Future for Action<T>
 where
     T: Unpin,
@@ -36,33 +56,31 @@ where
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
         let me = &mut *self;
         let mut inner = me.driver.inner.borrow_mut();
-        let key = me.key as usize;
-        let state = mem::replace(&mut inner.actions[key], State::Submitted);
+        let state = inner.actions.get_mut(me.key).expect("invalid state key");
 
-        match state {
+        match mem::replace(state, State::Submitted) {
             State::Submitted => {
-                inner.actions[key] = State::Waiting(cx.waker().clone());
+                *state = State::Waiting(cx.waker().clone());
                 Poll::Pending
             }
             State::Waiting(waker) => {
                 if !waker.will_wake(cx.waker()) {
-                    inner.actions[key] = State::Waiting(cx.waker().clone());
-                } else {
-                    inner.actions[key] = State::Waiting(waker);
+                    *state = State::Waiting(cx.waker().clone());
                 }
                 Poll::Pending
             }
+            State::Ignored(..) => unreachable!(),
             State::Completed(cqe) => {
-                inner.actions.remove(key);
+                inner.actions.remove(me.key);
+                me.key = usize::MAX;
                 let result = if cqe.result() >= 0 {
                     Ok(cqe.result())
                 } else {
                     Err(io::Error::from_raw_os_error(-cqe.result()))
                 };
                 let flags = cqe.flags();
-                let action = me.action.take().expect("action can not be None");
                 Poll::Ready(Completion {
-                    action,
+                    action: me.action.take().expect("action can not be None"),
                     result,
                     _flags: flags,
                 })

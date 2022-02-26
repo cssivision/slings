@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::RefCell;
 use std::io;
 use std::mem::{self, size_of, MaybeUninit};
@@ -98,7 +99,9 @@ impl Driver {
                 continue;
             }
             let action = &mut inner.actions[key as usize];
-            action.complete(cqe);
+            if action.complete(cqe) {
+                inner.actions.remove(key as usize);
+            }
         }
 
         Ok(())
@@ -108,10 +111,10 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
-    pub fn submit(&self, sqe: Entry) -> io::Result<u64> {
+    pub fn submit(&self, sqe: Entry) -> io::Result<usize> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
-        let key = inner.actions.insert(State::Submitted) as u64;
+        let key = inner.actions.insert(State::Submitted);
 
         let ring = &mut inner.ring;
         if ring.submission().is_full() {
@@ -119,7 +122,7 @@ impl Driver {
             ring.submission().sync();
         }
 
-        let sqe = sqe.user_data(key);
+        let sqe = sqe.user_data(key as u64);
         unsafe {
             ring.submission().push(&sqe).expect("push entry fail");
         }
@@ -136,20 +139,25 @@ pub enum State {
     Waiting(Waker),
     /// The operation has completed.
     Completed(cqueue::Entry),
+    /// Ignored
+    Ignored(Box<dyn Any>),
 }
 
 impl State {
-    pub fn complete(&mut self, cqe: cqueue::Entry) {
+    pub fn complete(&mut self, cqe: cqueue::Entry) -> bool {
         match mem::replace(self, State::Submitted) {
             State::Submitted => {
                 *self = State::Completed(cqe);
+                false
             }
             State::Waiting(waker) => {
                 *self = State::Completed(cqe);
                 waker.wake();
+                false
             }
-            State::Completed(_) => unreachable!("invalid operation state"),
-        };
+            State::Ignored(..) => true,
+            State::Completed(..) => unreachable!("invalid operation state"),
+        }
     }
 }
 
