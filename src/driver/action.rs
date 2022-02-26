@@ -66,6 +66,8 @@ where
             State::Waiting(waker) => {
                 if !waker.will_wake(cx.waker()) {
                     *state = State::Waiting(cx.waker().clone());
+                } else {
+                    *state = State::Waiting(waker);
                 }
                 Poll::Pending
             }
