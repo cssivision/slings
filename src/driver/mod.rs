@@ -57,7 +57,6 @@ impl Clone for Driver {
 pub struct Inner {
     ring: IoUring,
     actions: Slab<State>,
-    // buffers: Buffers,
 }
 
 impl Driver {
