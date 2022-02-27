@@ -1,12 +1,9 @@
 use std::any::Any;
 use std::cell::RefCell;
 use std::io;
-use std::mem::{self, size_of, MaybeUninit};
-use std::net::{Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
-use std::ops::{Deref, DerefMut};
+use std::mem;
 use std::panic;
 use std::rc::Rc;
-use std::slice;
 use std::task::Waker;
 
 use io_uring::squeue::Entry;
@@ -70,7 +67,7 @@ impl Driver {
         let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
-                actions: Slab::new(),
+                actions: Slab::with_capacity(256),
             })),
         };
         Ok(driver)
@@ -157,125 +154,5 @@ impl State {
             State::Ignored(..) => true,
             State::Completed(..) => unreachable!("invalid operation state"),
         }
-    }
-}
-
-unsafe fn to_socket_addr(storage: *const libc::sockaddr_storage) -> io::Result<SocketAddr> {
-    match (*storage).ss_family as libc::c_int {
-        libc::AF_INET => {
-            // Safety: if the ss_family field is AF_INET then storage must be a sockaddr_in.
-            let addr: &libc::sockaddr_in = &*(storage as *const libc::sockaddr_in);
-            let ip = Ipv4Addr::from(addr.sin_addr.s_addr.to_ne_bytes());
-            let port = u16::from_be(addr.sin_port);
-            Ok(SocketAddr::V4(SocketAddrV4::new(ip, port)))
-        }
-        libc::AF_INET6 => {
-            // Safety: if the ss_family field is AF_INET6 then storage must be a sockaddr_in6.
-            let addr: &libc::sockaddr_in6 = &*(storage as *const libc::sockaddr_in6);
-            let ip = Ipv6Addr::from(addr.sin6_addr.s6_addr);
-            let port = u16::from_be(addr.sin6_port);
-            Ok(SocketAddr::V6(SocketAddrV6::new(
-                ip,
-                port,
-                addr.sin6_flowinfo,
-                addr.sin6_scope_id,
-            )))
-        }
-        _ => Err(io::ErrorKind::InvalidInput.into()),
-    }
-}
-
-#[repr(C)]
-union SockAddrIn {
-    v4: libc::sockaddr_in,
-    v6: libc::sockaddr_in6,
-}
-
-impl SockAddrIn {
-    fn as_ptr(&self) -> *const libc::sockaddr {
-        self as *const _ as *const libc::sockaddr
-    }
-}
-
-fn socket_addr(addr: &SocketAddr) -> (SockAddrIn, libc::socklen_t) {
-    match addr {
-        SocketAddr::V4(ref addr) => {
-            // `s_addr` is stored as BE on all machine and the array is in BE order.
-            // So the native endian conversion method is used so that it's never swapped.
-            let sin_addr = libc::in_addr {
-                s_addr: u32::from_ne_bytes(addr.ip().octets()),
-            };
-            let sockaddr_in = libc::sockaddr_in {
-                sin_family: libc::AF_INET as libc::sa_family_t,
-                sin_port: addr.port().to_be(),
-                sin_addr,
-                sin_zero: [0; 8],
-            };
-            let sockaddr = SockAddrIn { v4: sockaddr_in };
-            let socklen = size_of::<libc::sockaddr_in>() as libc::socklen_t;
-            (sockaddr, socklen)
-        }
-        SocketAddr::V6(ref addr) => {
-            let sockaddr_in6 = libc::sockaddr_in6 {
-                sin6_family: libc::AF_INET6 as libc::sa_family_t,
-                sin6_port: addr.port().to_be(),
-                sin6_addr: libc::in6_addr {
-                    s6_addr: addr.ip().octets(),
-                },
-                sin6_flowinfo: addr.flowinfo(),
-                sin6_scope_id: addr.scope_id(),
-            };
-            let sockaddr = SockAddrIn { v6: sockaddr_in6 };
-            let socklen = size_of::<libc::sockaddr_in6>() as libc::socklen_t;
-            (sockaddr, socklen)
-        }
-    }
-}
-
-fn cmsghdr(msg_name: *mut libc::sockaddr_storage, bufs: &mut [MaybeUninitSlice]) -> libc::msghdr {
-    let msg_namelen = size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-    let mut msg: libc::msghdr = unsafe { mem::zeroed() };
-    msg.msg_name = msg_name.cast();
-    msg.msg_namelen = msg_namelen;
-    msg.msg_iov = bufs.as_mut_ptr().cast();
-    msg.msg_iovlen = bufs.len() as _;
-    msg
-}
-
-#[repr(transparent)]
-struct MaybeUninitSlice {
-    vec: libc::iovec,
-}
-
-impl<'a> MaybeUninitSlice {
-    pub(crate) fn new(buf: &mut [u8], len: usize) -> MaybeUninitSlice {
-        MaybeUninitSlice {
-            vec: libc::iovec {
-                iov_base: buf.as_mut_ptr().cast(),
-                iov_len: len,
-            },
-        }
-    }
-
-    pub(crate) fn as_slice(&self) -> &[MaybeUninit<u8>] {
-        unsafe { slice::from_raw_parts(self.vec.iov_base.cast(), self.vec.iov_len) }
-    }
-
-    pub(crate) fn as_mut_slice(&mut self) -> &mut [MaybeUninit<u8>] {
-        unsafe { slice::from_raw_parts_mut(self.vec.iov_base.cast(), self.vec.iov_len) }
-    }
-}
-
-impl Deref for MaybeUninitSlice {
-    type Target = [MaybeUninit<u8>];
-
-    fn deref(&self) -> &[MaybeUninit<u8>] {
-        self.as_slice()
-    }
-}
-
-impl DerefMut for MaybeUninitSlice {
-    fn deref_mut(&mut self) -> &mut [MaybeUninit<u8>] {
-        self.as_mut_slice()
     }
 }

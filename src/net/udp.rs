@@ -70,6 +70,6 @@ impl UdpSocket {
 
     pub async fn send_to<A: Into<SocketAddr>>(&self, buf: &[u8], target: A) -> io::Result<usize> {
         let addr = target.into();
-        poll_fn(|cx| self.inner.poll_send_to(cx, buf, &addr)).await
+        poll_fn(|cx| self.inner.poll_send_to(cx, buf, addr)).await
     }
 }

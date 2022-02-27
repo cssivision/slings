@@ -3,23 +3,30 @@ use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
+use os_socketaddr::OsSocketAddr;
 
-use crate::driver::{socket_addr, Action};
+use crate::driver::Action;
 
 pub struct Connect {
     fd: RawFd,
+    os_socket_addr: OsSocketAddr,
 }
 
 impl Action<Connect> {
-    pub fn connect(addr: SocketAddr) -> io::Result<Action<Connect>> {
-        let (sockaddr, socklen) = socket_addr(&addr);
-        let fd = match addr {
+    pub fn connect(socket_addr: SocketAddr) -> io::Result<Action<Connect>> {
+        let fd = match socket_addr {
             SocketAddr::V4(_) => new_v4_socket(),
             SocketAddr::V6(_) => new_v6_socket(),
         }?;
-        let entry =
-            opcode::Connect::new(types::Fd(fd), sockaddr.as_ptr() as *mut _, socklen).build();
-        Action::submit(Connect { fd }, entry)
+        let os_socket_addr = OsSocketAddr::from(socket_addr);
+        let connect = Connect { fd, os_socket_addr };
+        let entry = opcode::Connect::new(
+            types::Fd(fd),
+            connect.os_socket_addr.as_ptr(),
+            connect.os_socket_addr.len(),
+        )
+        .build();
+        Action::submit(connect, entry)
     }
 }
 

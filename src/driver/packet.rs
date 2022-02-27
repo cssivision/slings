@@ -39,7 +39,7 @@ impl<T: AsRawFd> Packet<T> {
         &self,
         cx: &mut Context,
         buf: &[u8],
-        addr: &SocketAddr,
+        addr: SocketAddr,
     ) -> Poll<io::Result<usize>> {
         self.inner
             .borrow_mut()
@@ -91,7 +91,7 @@ impl Inner {
         &mut self,
         cx: &mut Context,
         buf: &[u8],
-        addr: &SocketAddr,
+        addr: SocketAddr,
         fd: RawFd,
     ) -> Poll<io::Result<usize>> {
         loop {
