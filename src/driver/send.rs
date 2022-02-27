@@ -8,17 +8,16 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
+#[allow(dead_code)]
 pub struct Send {
-    _buf: Vec<u8>,
+    buf: Vec<u8>,
 }
 
 impl Action<Send> {
     pub fn send(fd: RawFd, buf: &[u8]) -> io::Result<Action<Send>> {
         let buf = buf.to_vec();
-        let ptr = buf.as_ptr();
-        let len = buf.len() as u32;
-        let entry = opcode::Send::new(types::Fd(fd), ptr, len).build();
-        Action::submit(Send { _buf: buf }, entry)
+        let entry = opcode::Send::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32).build();
+        Action::submit(Send { buf }, entry)
     }
 
     pub(crate) fn poll_send(&mut self, cx: &mut Context) -> Poll<io::Result<usize>> {
