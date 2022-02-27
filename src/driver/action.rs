@@ -84,15 +84,16 @@ where
                 Poll::Ready(Completion {
                     action: me.action.take().expect("action can not be None"),
                     result,
-                    _flags: flags,
+                    flags,
                 })
             }
         }
     }
 }
 
+#[allow(dead_code)]
 pub struct Completion<T> {
     pub(crate) action: T,
     pub(crate) result: io::Result<i32>,
-    pub(crate) _flags: u32,
+    pub(crate) flags: u32,
 }
