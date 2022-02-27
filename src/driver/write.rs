@@ -8,17 +8,16 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
+#[allow(dead_code)]
 pub struct Write {
-    _buf: Vec<u8>,
+    buf: Vec<u8>,
 }
 
 impl Action<Write> {
     pub fn write(fd: RawFd, buf: &[u8]) -> io::Result<Action<Write>> {
         let buf = buf.to_vec();
-        let ptr = buf.as_ptr();
-        let len = buf.len() as u32;
-        let entry = opcode::Write::new(types::Fd(fd), ptr, len).build();
-        Action::submit(Write { _buf: buf }, entry)
+        let entry = opcode::Write::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32).build();
+        Action::submit(Write { buf }, entry)
     }
 
     pub(crate) fn poll_write(&mut self, cx: &mut Context) -> Poll<io::Result<usize>> {
