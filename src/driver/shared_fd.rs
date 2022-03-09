@@ -20,6 +20,7 @@ struct Inner {
     state: RefCell<State>,
 }
 
+#[allow(dead_code)]
 enum State {
     Init,
     Waiting(Option<Waker>),
@@ -41,6 +42,7 @@ impl SharedFd {
         self.inner.fd
     }
 
+    #[allow(dead_code)]
     pub async fn close(mut self) {
         if let Some(inner) = Rc::get_mut(&mut self.inner) {
             inner.submit_close_action();
