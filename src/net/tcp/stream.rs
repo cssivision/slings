@@ -1,36 +1,40 @@
 use std::io;
 use std::net::{self, SocketAddr, ToSocketAddrs};
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures_util::io::{AsyncBufRead, AsyncRead, AsyncWrite};
 
-use crate::driver::{self, Action};
+use crate::driver::{self, Socket};
 
 pub struct TcpStream {
-    inner: driver::Stream<net::TcpStream>,
+    inner: driver::Stream,
 }
 
 impl FromRawFd for TcpStream {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        TcpStream::from_std(net::TcpStream::from_raw_fd(fd))
+        let socket = Socket::from_raw_fd(fd);
+        TcpStream {
+            inner: driver::Stream::new(socket),
+        }
     }
 }
 
 impl TcpStream {
     pub fn from_std(stream: net::TcpStream) -> TcpStream {
+        let socket = unsafe { Socket::from_raw_fd(stream.as_raw_fd()) };
         TcpStream {
-            inner: driver::Stream::new(stream),
+            inner: driver::Stream::new(socket),
         }
     }
 
     async fn connect_addr(addr: SocketAddr) -> io::Result<TcpStream> {
-        let completion = Action::connect(addr)?.await;
-        let fd = completion.action.get_socket(completion.result)?;
-        Ok(TcpStream::from_std(unsafe {
-            net::TcpStream::from_raw_fd(fd)
-        }))
+        let socket = Socket::new(addr, libc::SOCK_STREAM)?;
+        socket.connect(addr).await?;
+        Ok(TcpStream {
+            inner: driver::Stream::new(socket),
+        })
     }
 
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {
@@ -62,14 +66,6 @@ impl TcpStream {
 
     pub fn shutdown(&self, how: net::Shutdown) -> std::io::Result<()> {
         self.inner.get_ref().shutdown(how)
-    }
-
-    pub fn nodelay(&self) -> io::Result<bool> {
-        self.inner.get_ref().nodelay()
-    }
-
-    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
-        self.inner.get_ref().set_nodelay(nodelay)
     }
 }
 
@@ -105,5 +101,13 @@ impl AsyncWrite for TcpStream {
     fn poll_close(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
         self.shutdown(net::Shutdown::Write)?;
         Poll::Ready(Ok(()))
+    }
+}
+
+impl From<Socket> for TcpStream {
+    fn from(socket: Socket) -> Self {
+        TcpStream {
+            inner: driver::Stream::new(socket),
+        }
     }
 }

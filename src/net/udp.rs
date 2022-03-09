@@ -1,12 +1,12 @@
 use std::io;
-use std::net::{self, SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures_util::future::poll_fn;
 
-use crate::driver::Packet;
+use crate::driver::{Packet, Socket};
 
 pub struct UdpSocket {
-    inner: Packet<net::UdpSocket>,
+    inner: Packet,
 }
 
 impl UdpSocket {
@@ -29,8 +29,9 @@ impl UdpSocket {
     }
 
     fn bind_addr(addr: SocketAddr) -> io::Result<UdpSocket> {
+        let socket = Socket::bind(addr, libc::SOCK_DGRAM)?;
         Ok(UdpSocket {
-            inner: Packet::new(net::UdpSocket::bind(addr)?),
+            inner: Packet::new(socket),
         })
     }
 
@@ -38,12 +39,12 @@ impl UdpSocket {
         self.inner.get_ref().local_addr()
     }
 
-    pub fn connect<A: ToSocketAddrs>(&self, addr: A) -> io::Result<()> {
+    pub async fn connect<A: ToSocketAddrs>(&self, addr: A) -> io::Result<()> {
         let addrs = addr.to_socket_addrs()?;
         let mut last_err = None;
 
         for addr in addrs {
-            match self.inner.get_ref().connect(addr) {
+            match self.inner.get_ref().connect(addr).await {
                 Ok(_) => return Ok(()),
                 Err(e) => last_err = Some(e),
             }

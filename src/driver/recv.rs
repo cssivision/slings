@@ -1,22 +1,29 @@
 use std::future::Future;
 use std::io;
-use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::Action;
+use crate::driver::{Action, SharedFd};
 
+#[allow(dead_code)]
 pub struct Recv {
+    fd: SharedFd,
     buf: Vec<u8>,
 }
 
 impl Action<Recv> {
-    pub fn recv(fd: RawFd, len: usize) -> io::Result<Action<Recv>> {
+    pub fn recv(fd: &SharedFd, len: usize) -> io::Result<Action<Recv>> {
         let mut buf = Vec::with_capacity(len);
-        let entry = opcode::Recv::new(types::Fd(fd), buf.as_mut_ptr(), len as u32).build();
-        Action::submit(Recv { buf }, entry)
+        let entry = opcode::Recv::new(types::Fd(fd.raw_fd()), buf.as_mut_ptr(), len as u32).build();
+        Action::submit(
+            Recv {
+                buf,
+                fd: fd.clone(),
+            },
+            entry,
+        )
     }
 
     pub fn poll_recv(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {

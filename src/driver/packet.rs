@@ -1,19 +1,18 @@
 use std::cell::RefCell;
 use std::io;
 use std::net::SocketAddr;
-use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::driver::{self, Action};
+use crate::driver::{self, Action, SharedFd, Socket};
 
-pub struct Packet<T> {
+pub struct Packet {
     inner: RefCell<Inner>,
-    io: T,
+    io: Socket,
 }
 
-impl<T: AsRawFd> Packet<T> {
-    pub fn new(io: T) -> Packet<T> {
+impl Packet {
+    pub fn new(io: Socket) -> Packet {
         Packet {
             io,
             inner: RefCell::new(Inner {
@@ -25,14 +24,12 @@ impl<T: AsRawFd> Packet<T> {
         }
     }
 
-    pub fn get_ref(&self) -> &T {
+    pub fn get_ref(&self) -> &Socket {
         &self.io
     }
 
     pub fn poll_send(&self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
-        self.inner
-            .borrow_mut()
-            .poll_send(cx, buf, self.io.as_raw_fd())
+        self.inner.borrow_mut().poll_send(cx, buf, &self.io.fd)
     }
 
     pub fn poll_send_to(
@@ -43,13 +40,11 @@ impl<T: AsRawFd> Packet<T> {
     ) -> Poll<io::Result<usize>> {
         self.inner
             .borrow_mut()
-            .poll_send_to(cx, buf, addr, self.io.as_raw_fd())
+            .poll_send_to(cx, buf, addr, &self.io.fd)
     }
 
     pub fn poll_recv(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        self.inner
-            .borrow_mut()
-            .poll_recv(cx, buf, self.io.as_raw_fd())
+        self.inner.borrow_mut().poll_recv(cx, buf, &self.io.fd)
     }
 
     pub fn poll_recv_from(
@@ -57,9 +52,7 @@ impl<T: AsRawFd> Packet<T> {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<(usize, SocketAddr)>> {
-        self.inner
-            .borrow_mut()
-            .poll_recv_from(cx, buf, self.io.as_raw_fd())
+        self.inner.borrow_mut().poll_recv_from(cx, buf, &self.io.fd)
     }
 }
 
@@ -71,7 +64,12 @@ struct Inner {
 }
 
 impl Inner {
-    fn poll_send(&mut self, cx: &mut Context, buf: &[u8], fd: RawFd) -> Poll<io::Result<usize>> {
+    fn poll_send(
+        &mut self,
+        cx: &mut Context,
+        buf: &[u8],
+        fd: &SharedFd,
+    ) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.send {
                 Send::Idle => {
@@ -92,7 +90,7 @@ impl Inner {
         cx: &mut Context,
         buf: &[u8],
         addr: SocketAddr,
-        fd: RawFd,
+        fd: &SharedFd,
     ) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.send_to {
@@ -113,12 +111,12 @@ impl Inner {
         &mut self,
         cx: &mut Context,
         buf: &mut [u8],
-        fd: RawFd,
+        fd: &SharedFd,
     ) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.recv {
                 Recv::Idle => {
-                    let action = Action::recv(fd, buf.len())?;
+                    let action = Action::recv(&fd, buf.len())?;
                     self.recv = Recv::Recving(action);
                 }
                 Recv::Recving(action) => {
@@ -134,7 +132,7 @@ impl Inner {
         &mut self,
         cx: &mut Context,
         buf: &mut [u8],
-        fd: RawFd,
+        fd: &SharedFd,
     ) -> Poll<io::Result<(usize, SocketAddr)>> {
         loop {
             match &mut self.recv_from {

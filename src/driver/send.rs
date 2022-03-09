@@ -1,23 +1,30 @@
 use std::future::Future;
 use std::io;
-use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::Action;
+use crate::driver::{Action, SharedFd};
 
 #[allow(dead_code)]
 pub struct Send {
+    fd: SharedFd,
     buf: Vec<u8>,
 }
 
 impl Action<Send> {
-    pub fn send(fd: RawFd, buf: &[u8]) -> io::Result<Action<Send>> {
+    pub fn send(fd: &SharedFd, buf: &[u8]) -> io::Result<Action<Send>> {
         let buf = buf.to_vec();
-        let entry = opcode::Send::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32).build();
-        Action::submit(Send { buf }, entry)
+        let entry =
+            opcode::Send::new(types::Fd(fd.raw_fd()), buf.as_ptr(), buf.len() as u32).build();
+        Action::submit(
+            Send {
+                buf,
+                fd: fd.clone(),
+            },
+            entry,
+        )
     }
 
     pub(crate) fn poll_send(&mut self, cx: &mut Context) -> Poll<io::Result<usize>> {
