@@ -67,6 +67,10 @@ impl TcpStream {
     pub fn shutdown(&self, how: net::Shutdown) -> std::io::Result<()> {
         self.inner.get_ref().shutdown(how)
     }
+
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        self.inner.get_ref().set_nodelay(nodelay)
+    }
 }
 
 impl AsyncBufRead for TcpStream {

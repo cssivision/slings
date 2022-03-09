@@ -51,10 +51,9 @@ impl Socket {
         socket_type: socket2::Type,
     ) -> io::Result<Socket> {
         let sys_listener = socket2::Socket::new(domain, socket_type, None)?;
-        let addr = socket2::SockAddr::from(socket_addr);
         sys_listener.set_reuse_port(true)?;
         sys_listener.set_reuse_address(true)?;
-        sys_listener.bind(&addr)?;
+        sys_listener.bind(&socket_addr)?;
         let fd = SharedFd::new(sys_listener.into_raw_fd());
         Ok(Self { fd })
     }
@@ -96,6 +95,37 @@ impl Socket {
         syscall!(shutdown(self.as_raw_fd(), how))?;
         Ok(())
     }
+
+    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+        setsockopt(
+            self.as_raw_fd(),
+            libc::IPPROTO_TCP,
+            libc::TCP_NODELAY,
+            nodelay as libc::c_int,
+        )
+    }
+}
+
+pub fn setsockopt<T>(
+    sock: libc::c_int,
+    opt: libc::c_int,
+    val: libc::c_int,
+    payload: T,
+) -> io::Result<()> {
+    unsafe {
+        let payload = &payload as *const T as *const libc::c_void;
+        let res = libc::setsockopt(
+            sock,
+            opt,
+            val,
+            payload,
+            mem::size_of::<T>() as libc::socklen_t,
+        );
+        if res == -1 {
+            return Err(io::Error::last_os_error());
+        }
+    }
+    Ok(())
 }
 
 fn sockname<F>(f: F) -> io::Result<SocketAddr>
@@ -107,7 +137,7 @@ where
         let mut len = mem::size_of_val(&storage) as libc::socklen_t;
         let res = f(&mut storage as *mut _ as *mut _, &mut len);
         if res == -1 {
-            return Err(std::io::Error::last_os_error());
+            return Err(io::Error::last_os_error());
         }
         let os_socket_addr = OsSocketAddr::from_raw_parts(&storage as *const _ as _, len as usize);
         os_socket_addr

@@ -74,7 +74,7 @@ impl Inner {
         loop {
             match &mut self.write {
                 Write::Idle => {
-                    let action = Action::write(&fd, buf)?;
+                    let action = Action::write(fd, buf)?;
                     self.write = Write::Writing(action);
                 }
                 Write::Writing(action) => {

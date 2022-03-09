@@ -1,5 +1,5 @@
 use std::io;
-use std::net::{self, SocketAddr};
+use std::net::{self, SocketAddr, ToSocketAddrs};
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 
 use super::stream::TcpStream;
@@ -10,7 +10,25 @@ pub struct TcpListener {
 }
 
 impl TcpListener {
-    pub async fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
+    pub fn bind<A: ToSocketAddrs>(addr: A) -> io::Result<TcpListener> {
+        let addrs = addr.to_socket_addrs()?;
+        let mut last_err = None;
+
+        for addr in addrs {
+            match Self::bind_addr(addr) {
+                Ok(v) => return Ok(v),
+                Err(e) => last_err = Some(e),
+            }
+        }
+        Err(last_err.unwrap_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "could not resolve to any address",
+            )
+        }))
+    }
+
+    fn bind_addr(addr: SocketAddr) -> io::Result<TcpListener> {
         let socket = Socket::bind(addr, libc::SOCK_STREAM)?;
         socket.listen(1024)?;
         Ok(TcpListener { inner: socket })
