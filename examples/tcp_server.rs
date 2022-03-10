@@ -9,7 +9,7 @@ use slings::AsyncWriteExt;
 fn main() -> io::Result<()> {
     slings::block_on(async {
         let addr: SocketAddr = "127.0.0.1:8080".parse().unwrap();
-        let listener = TcpListener::bind(addr).await?;
+        let listener = TcpListener::bind(addr)?;
         println!("server start listen on {:?}", listener.local_addr());
         loop {
             let (mut stream, addr) = listener.accept().await?;
