@@ -25,6 +25,17 @@ impl<T> Action<T> {
             })
         })
     }
+
+    pub fn try_submit(action: T, entry: Entry) -> io::Result<Action<T>> {
+        driver::CURRENT.with(|driver| {
+            let key = driver.try_submit(entry)?;
+            Ok(Action {
+                driver: driver.clone(),
+                action: Some(action),
+                key,
+            })
+        })
+    }
 }
 
 impl<T> Drop for Action<T> {

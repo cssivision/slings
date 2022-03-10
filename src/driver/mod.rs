@@ -115,6 +115,13 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
+    pub fn try_submit(&self, sqe: Entry) -> io::Result<usize> {
+        if !self.inner.try_borrow_mut().is_ok() {
+            return Err(io::ErrorKind::Other.into());
+        }
+        self.submit(sqe)
+    }
+
     pub fn submit(&self, sqe: Entry) -> io::Result<usize> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -135,7 +142,6 @@ impl Driver {
     }
 }
 
-#[derive(Debug)]
 pub enum State {
     /// The operation has been submitted to uring and is currently in-flight
     Submitted,

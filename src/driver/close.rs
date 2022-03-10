@@ -13,6 +13,6 @@ impl Action<Close> {
     pub fn close(fd: RawFd) -> io::Result<Action<Close>> {
         let close = Close { fd };
         let entry = opcode::Close::new(types::Fd(close.fd)).build();
-        Action::submit(close, entry)
+        Action::try_submit(close, entry)
     }
 }
