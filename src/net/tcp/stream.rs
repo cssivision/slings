@@ -64,10 +64,6 @@ impl TcpStream {
         self.inner.get_ref().peer_addr()
     }
 
-    pub fn shutdown(&self, how: net::Shutdown) -> std::io::Result<()> {
-        self.inner.get_ref().shutdown(how)
-    }
-
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         self.inner.get_ref().set_nodelay(nodelay)
     }
@@ -102,9 +98,8 @@ impl AsyncWrite for TcpStream {
         Poll::Ready(Ok(()))
     }
 
-    fn poll_close(self: Pin<&mut Self>, _: &mut Context) -> Poll<io::Result<()>> {
-        self.shutdown(net::Shutdown::Write)?;
-        Poll::Ready(Ok(()))
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context) -> Poll<io::Result<()>> {
+        self.get_mut().inner.poll_shutdown(cx, net::Shutdown::Write)
     }
 }
 

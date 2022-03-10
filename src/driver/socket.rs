@@ -1,6 +1,5 @@
 use std::io;
 use std::mem;
-use std::net;
 use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 
@@ -84,16 +83,6 @@ impl Socket {
 
     pub(crate) fn peer_addr(&self) -> io::Result<SocketAddr> {
         sockname(|buf, len| unsafe { libc::getpeername(self.as_raw_fd(), buf, len) })
-    }
-
-    pub fn shutdown(&self, how: net::Shutdown) -> io::Result<()> {
-        let how = match how {
-            net::Shutdown::Write => libc::SHUT_WR,
-            net::Shutdown::Read => libc::SHUT_RD,
-            net::Shutdown::Both => libc::SHUT_RDWR,
-        };
-        syscall!(shutdown(self.as_raw_fd(), how))?;
-        Ok(())
     }
 
     pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {

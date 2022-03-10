@@ -1,4 +1,5 @@
 use std::io;
+use std::net;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
@@ -18,6 +19,7 @@ impl Stream {
                 rd: vec![],
                 read: Read::Idle,
                 write: Write::Idle,
+                shutdown: Shutdown::Idle,
             },
         }
     }
@@ -45,6 +47,15 @@ impl Stream {
     pub fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         self.inner.poll_write(cx, buf, &self.io.fd)
     }
+
+    pub fn poll_shutdown(&mut self, cx: &mut Context, how: net::Shutdown) -> Poll<io::Result<()>> {
+        let how = match how {
+            net::Shutdown::Write => libc::SHUT_WR,
+            net::Shutdown::Read => libc::SHUT_RD,
+            net::Shutdown::Both => libc::SHUT_RDWR,
+        };
+        self.inner.poll_shutdown(cx, &self.io.fd, how)
+    }
 }
 
 struct Inner {
@@ -52,6 +63,7 @@ struct Inner {
     read_pos: usize,
     read: Read,
     write: Write,
+    shutdown: Shutdown,
 }
 
 enum Write {
@@ -64,7 +76,33 @@ enum Read {
     Reading(Action<driver::Read>),
 }
 
+enum Shutdown {
+    Idle,
+    Shutdowning(Action<driver::Shutdown>),
+}
+
 impl Inner {
+    fn poll_shutdown(
+        &mut self,
+        cx: &mut Context,
+        fd: &SharedFd,
+        how: libc::c_int,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            match &mut self.shutdown {
+                Shutdown::Idle => {
+                    let action = Action::shutdown(fd, how)?;
+                    self.shutdown = Shutdown::Shutdowning(action);
+                }
+                Shutdown::Shutdowning(action) => {
+                    let n = ready!(Pin::new(action).poll_shutdown(cx))?;
+                    self.shutdown = Shutdown::Idle;
+                    return Poll::Ready(Ok(n));
+                }
+            }
+        }
+    }
+
     fn poll_write(
         &mut self,
         cx: &mut Context,
