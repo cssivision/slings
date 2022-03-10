@@ -86,7 +86,7 @@ impl Socket {
         sockname(|buf, len| unsafe { libc::getpeername(self.as_raw_fd(), buf, len) })
     }
 
-    pub fn shutdown(&self, how: net::Shutdown) -> std::io::Result<()> {
+    pub fn shutdown(&self, how: net::Shutdown) -> io::Result<()> {
         let how = match how {
             net::Shutdown::Write => libc::SHUT_WR,
             net::Shutdown::Read => libc::SHUT_RD,
@@ -112,19 +112,14 @@ pub fn setsockopt<T>(
     val: libc::c_int,
     payload: T,
 ) -> io::Result<()> {
-    unsafe {
-        let payload = &payload as *const T as *const libc::c_void;
-        let res = libc::setsockopt(
-            sock,
-            opt,
-            val,
-            payload,
-            mem::size_of::<T>() as libc::socklen_t,
-        );
-        if res == -1 {
-            return Err(io::Error::last_os_error());
-        }
-    }
+    let payload = &payload as *const T as *const libc::c_void;
+    syscall!(setsockopt(
+        sock,
+        opt,
+        val,
+        payload,
+        mem::size_of::<T>() as libc::socklen_t,
+    ))?;
     Ok(())
 }
 
@@ -132,18 +127,17 @@ fn sockname<F>(f: F) -> io::Result<SocketAddr>
 where
     F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int,
 {
-    unsafe {
-        let mut storage: libc::sockaddr_storage = mem::zeroed();
-        let mut len = mem::size_of_val(&storage) as libc::socklen_t;
-        let res = f(&mut storage as *mut _ as *mut _, &mut len);
-        if res == -1 {
-            return Err(io::Error::last_os_error());
-        }
-        let os_socket_addr = OsSocketAddr::from_raw_parts(&storage as *const _ as _, len as usize);
-        os_socket_addr
-            .into_addr()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))
+    let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
+    let mut len = mem::size_of_val(&storage) as libc::socklen_t;
+    let res = f(&mut storage as *mut _ as *mut _, &mut len);
+    if res == -1 {
+        return Err(io::Error::last_os_error());
     }
+    let os_socket_addr =
+        unsafe { OsSocketAddr::from_raw_parts(&storage as *const _ as _, len as usize) };
+    os_socket_addr
+        .into_addr()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))
 }
 
 impl AsRawFd for Socket {
