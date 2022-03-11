@@ -6,13 +6,13 @@ use std::task::{Context, Poll};
 
 use crate::driver::{self, Action, SharedFd, Socket};
 
-pub struct Packet {
+pub(crate) struct Packet {
     inner: RefCell<Inner>,
     io: Socket,
 }
 
 impl Packet {
-    pub fn new(io: Socket) -> Packet {
+    pub(crate) fn new(io: Socket) -> Packet {
         Packet {
             io,
             inner: RefCell::new(Inner {
@@ -24,15 +24,15 @@ impl Packet {
         }
     }
 
-    pub fn get_ref(&self) -> &Socket {
+    pub(crate) fn get_ref(&self) -> &Socket {
         &self.io
     }
 
-    pub fn poll_send(&self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+    pub(crate) fn poll_send(&self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         self.inner.borrow_mut().poll_send(cx, buf, &self.io.fd)
     }
 
-    pub fn poll_send_to(
+    pub(crate) fn poll_send_to(
         &self,
         cx: &mut Context,
         buf: &[u8],
@@ -43,11 +43,11 @@ impl Packet {
             .poll_send_to(cx, buf, addr, &self.io.fd)
     }
 
-    pub fn poll_recv(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    pub(crate) fn poll_recv(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         self.inner.borrow_mut().poll_recv(cx, buf, &self.io.fd)
     }
 
-    pub fn poll_recv_from(
+    pub(crate) fn poll_recv_from(
         &self,
         cx: &mut Context,
         buf: &mut [u8],

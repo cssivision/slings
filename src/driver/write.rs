@@ -8,13 +8,13 @@ use io_uring::{opcode, types};
 use crate::driver::{Action, SharedFd};
 
 #[allow(dead_code)]
-pub struct Write {
+pub(crate) struct Write {
     fd: SharedFd,
     buf: Vec<u8>,
 }
 
 impl Action<Write> {
-    pub fn write(fd: &SharedFd, buf: &[u8]) -> io::Result<Action<Write>> {
+    pub(crate) fn write(fd: &SharedFd, buf: &[u8]) -> io::Result<Action<Write>> {
         let buf = buf.to_vec();
         let write = Write {
             buf,

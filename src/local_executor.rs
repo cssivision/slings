@@ -10,7 +10,7 @@ thread_local! {
     static GLOBAL_QUEUE: RefCell<VecDeque<Runnable>> = RefCell::new(VecDeque::with_capacity(64));
 }
 
-pub fn tick() -> bool {
+pub(crate) fn tick() -> bool {
     for _ in 0..MAX_TASKS_PER_TICK {
         match next_task() {
             Some(task) => {

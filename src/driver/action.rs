@@ -8,14 +8,14 @@ use io_uring::squeue::Entry;
 
 use crate::driver::{self, Driver, State};
 
-pub struct Action<T: 'static> {
+pub(crate) struct Action<T: 'static> {
     pub driver: Driver,
     pub action: Option<T>,
     pub key: usize,
 }
 
 impl<T> Action<T> {
-    pub fn submit(action: T, entry: Entry) -> io::Result<Action<T>> {
+    pub(crate) fn submit(action: T, entry: Entry) -> io::Result<Action<T>> {
         driver::CURRENT.with(|driver| {
             let key = driver.submit(entry)?;
             Ok(Action {
@@ -26,7 +26,7 @@ impl<T> Action<T> {
         })
     }
 
-    pub fn try_submit(action: T, entry: Entry) -> io::Result<Action<T>> {
+    pub(crate) fn try_submit(action: T, entry: Entry) -> io::Result<Action<T>> {
         driver::CURRENT.with(|driver| {
             let key = driver.try_submit(entry)?;
             Ok(Action {
@@ -103,7 +103,7 @@ where
 }
 
 #[allow(dead_code)]
-pub struct Completion<T> {
+pub(crate) struct Completion<T> {
     pub(crate) action: T,
     pub(crate) result: io::Result<i32>,
     pub(crate) flags: u32,

@@ -10,7 +10,7 @@ use os_socketaddr::OsSocketAddr;
 use crate::driver::{Action, SharedFd};
 
 #[allow(dead_code)]
-pub struct RecvMsg {
+pub(crate) struct RecvMsg {
     fd: SharedFd,
     pub(crate) os_socket_addr: Box<OsSocketAddr>,
     io_slices: Vec<IoSliceMut<'static>>,
@@ -19,7 +19,7 @@ pub struct RecvMsg {
 }
 
 impl Action<RecvMsg> {
-    pub fn recvmsg(fd: &SharedFd, len: usize) -> io::Result<Action<RecvMsg>> {
+    pub(crate) fn recvmsg(fd: &SharedFd, len: usize) -> io::Result<Action<RecvMsg>> {
         let mut buf = Vec::with_capacity(len);
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
@@ -43,7 +43,7 @@ impl Action<RecvMsg> {
         Action::submit(recv_msg, entry)
     }
 
-    pub fn poll_recv_from(
+    pub(crate) fn poll_recv_from(
         &mut self,
         cx: &mut Context,
         buf: &mut [u8],

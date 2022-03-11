@@ -3,7 +3,7 @@ use std::net::{self, SocketAddr, ToSocketAddrs};
 use std::os::unix::io::{FromRawFd, IntoRawFd};
 
 use super::stream::TcpStream;
-use crate::driver::socket::Socket;
+use crate::driver::Socket;
 
 pub struct TcpListener {
     inner: Socket,

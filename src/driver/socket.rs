@@ -9,7 +9,7 @@ use crate::driver::Action;
 use os_socketaddr::OsSocketAddr;
 
 #[derive(Clone)]
-pub struct Socket {
+pub(crate) struct Socket {
     pub(crate) fd: SharedFd,
 }
 
@@ -85,7 +85,7 @@ impl Socket {
         sockname(|buf, len| unsafe { libc::getpeername(self.as_raw_fd(), buf, len) })
     }
 
-    pub fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
+    pub(crate) fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
         setsockopt(
             self.as_raw_fd(),
             libc::IPPROTO_TCP,
@@ -95,7 +95,7 @@ impl Socket {
     }
 }
 
-pub fn setsockopt<T>(
+fn setsockopt<T>(
     sock: libc::c_int,
     opt: libc::c_int,
     val: libc::c_int,

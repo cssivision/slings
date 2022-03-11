@@ -7,13 +7,13 @@ use io_uring::{opcode, types};
 
 use crate::driver::{Action, SharedFd};
 
-pub struct Read {
+pub(crate) struct Read {
     fd: SharedFd,
     buf: Vec<u8>,
 }
 
 impl Action<Read> {
-    pub fn read(fd: &SharedFd, len: u32) -> io::Result<Action<Read>> {
+    pub(crate) fn read(fd: &SharedFd, len: u32) -> io::Result<Action<Read>> {
         let buf = Vec::with_capacity(len as usize);
         let mut read = Read {
             fd: fd.clone(),
@@ -24,7 +24,7 @@ impl Action<Read> {
         Action::submit(read, entry)
     }
 
-    pub fn poll_read(&mut self, cx: &mut Context) -> Poll<io::Result<Vec<u8>>> {
+    pub(crate) fn poll_read(&mut self, cx: &mut Context) -> Poll<io::Result<Vec<u8>>> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let n = completion.result?;
         let mut action = completion.action;

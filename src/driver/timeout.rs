@@ -7,12 +7,12 @@ use io_uring::{opcode, types};
 
 use crate::driver::Action;
 
-pub struct Timeout {
+pub(crate) struct Timeout {
     spec: types::Timespec,
 }
 
 impl Action<Timeout> {
-    pub fn timeout(sec: u64, nsec: u32) -> io::Result<Action<Timeout>> {
+    pub(crate) fn timeout(sec: u64, nsec: u32) -> io::Result<Action<Timeout>> {
         let timeout = Timeout {
             spec: types::Timespec::new().sec(sec).nsec(nsec),
         };
@@ -20,7 +20,7 @@ impl Action<Timeout> {
         Action::submit(timeout, entry)
     }
 
-    pub fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
+    pub(crate) fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let result = completion.result;
 

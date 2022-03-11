@@ -11,44 +11,41 @@ use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
-pub mod accept;
-pub mod action;
-pub mod close;
-pub mod connect;
-pub mod packet;
-pub mod read;
-pub mod recv;
-pub mod recvmsg;
-pub mod send;
-pub mod sendmsg;
-pub mod shared_fd;
-pub mod shutdown;
-pub mod socket;
-pub mod stream;
-pub mod timeout;
-pub mod write;
+mod accept;
+mod action;
+mod close;
+mod connect;
+mod packet;
+mod read;
+mod recv;
+mod recvmsg;
+mod send;
+mod sendmsg;
+mod shared_fd;
+mod shutdown;
+mod socket;
+mod stream;
+mod timeout;
+mod write;
 
-pub use action::Action;
-pub use close::Close;
-pub use packet::Packet;
-pub use read::Read;
-pub use recv::Recv;
-pub use recvmsg::RecvMsg;
-pub use send::Send;
-pub use sendmsg::SendMsg;
-pub use shared_fd::SharedFd;
-pub use shutdown::Shutdown;
-pub use socket::Socket;
-pub use stream::Stream;
-pub use timeout::Timeout;
-pub use write::Write;
-
-pub const DEFAULT_BUFFER_SIZE: usize = 4096;
+pub(crate) use action::Action;
+pub(crate) use packet::Packet;
+pub(crate) use read::Read;
+pub(crate) use recv::Recv;
+pub(crate) use recvmsg::RecvMsg;
+pub(crate) use send::Send;
+pub(crate) use sendmsg::SendMsg;
+pub(crate) use shared_fd::SharedFd;
+pub(crate) use shutdown::Shutdown;
+pub(crate) use socket::Socket;
+pub(crate) use stream::Stream;
+pub(crate) use timeout::Timeout;
+pub(crate) use write::Write;
 
 scoped_thread_local!(static CURRENT: Driver);
 
-pub struct Driver {
-    pub inner: Rc<RefCell<Inner>>,
+pub(crate) struct Driver {
+    inner: Rc<RefCell<Inner>>,
 }
 
 impl Clone for Driver {
@@ -59,13 +56,13 @@ impl Clone for Driver {
     }
 }
 
-pub struct Inner {
+struct Inner {
     ring: IoUring,
     actions: Slab<State>,
 }
 
 impl Driver {
-    pub fn new() -> io::Result<Driver> {
+    pub(crate) fn new() -> io::Result<Driver> {
         let ring = IoUring::new(256)?;
         // check if IORING_FEAT_FAST_POLL is supported
         if !ring.params().is_feature_fast_poll() {
@@ -81,7 +78,7 @@ impl Driver {
         Ok(driver)
     }
 
-    pub fn wait(&self) -> io::Result<()> {
+    pub(crate) fn wait(&self) -> io::Result<()> {
         let inner = &mut *self.inner.borrow_mut();
         let ring = &mut inner.ring;
 
@@ -111,18 +108,18 @@ impl Driver {
         Ok(())
     }
 
-    pub fn with<T>(&self, f: impl FnOnce() -> T) -> T {
+    pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
         CURRENT.set(self, f)
     }
 
-    pub fn try_submit(&self, sqe: Entry) -> io::Result<usize> {
-        if !self.inner.try_borrow_mut().is_ok() {
+    pub(crate) fn try_submit(&self, sqe: Entry) -> io::Result<usize> {
+        if self.inner.try_borrow_mut().is_err() {
             return Err(io::ErrorKind::Other.into());
         }
         self.submit(sqe)
     }
 
-    pub fn submit(&self, sqe: Entry) -> io::Result<usize> {
+    pub(crate) fn submit(&self, sqe: Entry) -> io::Result<usize> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let key = inner.actions.insert(State::Submitted);
@@ -142,7 +139,7 @@ impl Driver {
     }
 }
 
-pub enum State {
+enum State {
     /// The operation has been submitted to uring and is currently in-flight
     Submitted,
     /// The submitter is waiting for the completion of the operation
@@ -154,7 +151,7 @@ pub enum State {
 }
 
 impl State {
-    pub fn complete(&mut self, cqe: cqueue::Entry) -> bool {
+    fn complete(&mut self, cqe: cqueue::Entry) -> bool {
         match mem::replace(self, State::Submitted) {
             State::Submitted => {
                 *self = State::Completed(cqe);

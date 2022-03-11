@@ -10,7 +10,7 @@ use os_socketaddr::OsSocketAddr;
 use crate::driver::{Action, SharedFd};
 
 #[allow(dead_code)]
-pub struct SendMsg {
+pub(crate) struct SendMsg {
     fd: SharedFd,
     pub(crate) os_socket_addr: Box<OsSocketAddr>,
     pub(crate) buf: Vec<u8>,
@@ -19,7 +19,7 @@ pub struct SendMsg {
 }
 
 impl Action<SendMsg> {
-    pub fn sendmsg(
+    pub(crate) fn sendmsg(
         fd: &SharedFd,
         buf: &[u8],
         socket_addr: SocketAddr,

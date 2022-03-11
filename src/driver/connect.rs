@@ -6,13 +6,13 @@ use os_socketaddr::OsSocketAddr;
 
 use crate::driver::{Action, SharedFd};
 
-pub struct Connect {
+pub(crate) struct Connect {
     fd: SharedFd,
     os_socket_addr: OsSocketAddr,
 }
 
 impl Action<Connect> {
-    pub fn connect(fd: &SharedFd, socket_addr: SocketAddr) -> io::Result<Action<Connect>> {
+    pub(crate) fn connect(fd: &SharedFd, socket_addr: SocketAddr) -> io::Result<Action<Connect>> {
         let os_socket_addr = OsSocketAddr::from(socket_addr);
         let connect = Connect {
             fd: fd.clone(),

@@ -3,15 +3,17 @@ use std::net;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::driver::{self, Action, SharedFd, Socket, DEFAULT_BUFFER_SIZE};
+use crate::driver::{self, Action, SharedFd, Socket};
 
-pub struct Stream {
+const DEFAULT_BUFFER_SIZE: usize = 4096;
+
+pub(crate) struct Stream {
     inner: Inner,
     io: Socket,
 }
 
 impl Stream {
-    pub fn new(io: Socket) -> Stream {
+    pub(crate) fn new(io: Socket) -> Stream {
         Stream {
             io,
             inner: Inner {
@@ -24,11 +26,15 @@ impl Stream {
         }
     }
 
-    pub fn get_ref(&self) -> &Socket {
+    pub(crate) fn get_ref(&self) -> &Socket {
         &self.io
     }
 
-    pub fn poll_read(&mut self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+    pub(crate) fn poll_read(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<usize>> {
         let src = ready!(self.inner.poll_fill_buf(cx, &self.io.fd))?;
         let n = buf.len().min(src.len());
         buf[..n].copy_from_slice(&src[..n]);
@@ -36,19 +42,23 @@ impl Stream {
         Poll::Ready(Ok(n))
     }
 
-    pub fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
+    pub(crate) fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
         self.inner.poll_fill_buf(cx, &self.io.fd)
     }
 
-    pub fn consume(&mut self, amt: usize) {
+    pub(crate) fn consume(&mut self, amt: usize) {
         self.inner.consume(amt)
     }
 
-    pub fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+    pub(crate) fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
         self.inner.poll_write(cx, buf, &self.io.fd)
     }
 
-    pub fn poll_shutdown(&mut self, cx: &mut Context, how: net::Shutdown) -> Poll<io::Result<()>> {
+    pub(crate) fn poll_shutdown(
+        &mut self,
+        cx: &mut Context,
+        how: net::Shutdown,
+    ) -> Poll<io::Result<()>> {
         let how = match how {
             net::Shutdown::Write => libc::SHUT_WR,
             net::Shutdown::Read => libc::SHUT_RD,

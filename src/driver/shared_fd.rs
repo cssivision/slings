@@ -11,7 +11,7 @@ use super::close::Close;
 use crate::driver::Action;
 
 #[derive(Clone)]
-pub struct SharedFd {
+pub(crate) struct SharedFd {
     inner: Rc<Inner>,
 }
 
@@ -29,7 +29,7 @@ enum State {
 }
 
 impl SharedFd {
-    pub fn new(fd: RawFd) -> SharedFd {
+    pub(crate) fn new(fd: RawFd) -> SharedFd {
         SharedFd {
             inner: Rc::new(Inner {
                 fd,
@@ -38,12 +38,12 @@ impl SharedFd {
         }
     }
 
-    pub fn raw_fd(&self) -> RawFd {
+    pub(crate) fn raw_fd(&self) -> RawFd {
         self.inner.fd
     }
 
     #[allow(dead_code)]
-    pub async fn close(mut self) {
+    pub(crate) async fn close(mut self) {
         if let Some(inner) = Rc::get_mut(&mut self.inner) {
             inner.submit_close_action();
         }
@@ -71,7 +71,7 @@ impl Inner {
         }
     }
 
-    pub async fn closed(&self) {
+    pub(crate) async fn closed(&self) {
         poll_fn(|cx| {
             let mut state = self.state.borrow_mut();
             match &mut *state {
