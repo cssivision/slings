@@ -2,6 +2,7 @@ use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 
 use futures_util::future::poll_fn;
+use socket2::SockAddr;
 
 use crate::driver::{Packet, Socket};
 
@@ -44,7 +45,7 @@ impl UdpSocket {
         let mut last_err = None;
 
         for addr in addrs {
-            match self.inner.get_ref().connect(addr).await {
+            match self.inner.get_ref().connect(SockAddr::from(addr)).await {
                 Ok(_) => return Ok(()),
                 Err(e) => last_err = Some(e),
             }

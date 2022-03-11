@@ -6,7 +6,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use crate::driver::shared_fd::SharedFd;
 use crate::driver::Action;
 
-use os_socketaddr::OsSocketAddr;
+use socket2::SockAddr;
 
 #[derive(Clone)]
 pub(crate) struct Socket {
@@ -29,8 +29,8 @@ impl Socket {
         Ok(Socket { fd })
     }
 
-    pub(crate) async fn connect(&self, socket_addr: SocketAddr) -> io::Result<()> {
-        let action = Action::connect(&self.fd, socket_addr)?;
+    pub(crate) async fn connect(&self, sock_addr: SockAddr) -> io::Result<()> {
+        let action = Action::connect(&self.fd, sock_addr)?;
         let completion = action.await;
         completion.result?;
         Ok(())
@@ -67,14 +67,15 @@ impl Socket {
         let fd = completion.result?;
         let fd = SharedFd::new(fd as i32);
         let socket = Socket { fd };
-        let os_socket_addr = unsafe {
-            OsSocketAddr::from_raw_parts(
-                &completion.action.socketaddr.0 as *const _ as _,
-                completion.action.socketaddr.1 as usize,
-            )
+        let data = completion.action;
+        let (_, addr) = unsafe {
+            SockAddr::init(move |addr_storage, len| {
+                *addr_storage = data.socketaddr.0.to_owned();
+                *len = data.socketaddr.1;
+                Ok(())
+            })?
         };
-        let socket_addr = os_socket_addr.into_addr();
-        Ok((socket, socket_addr))
+        Ok((socket, addr.as_socket()))
     }
 
     pub(crate) fn local_addr(&self) -> io::Result<SocketAddr> {
@@ -122,10 +123,14 @@ where
     if res == -1 {
         return Err(io::Error::last_os_error());
     }
-    let os_socket_addr =
-        unsafe { OsSocketAddr::from_raw_parts(&storage as *const _ as _, len as usize) };
-    os_socket_addr
-        .into_addr()
+    let (_, addr) = unsafe {
+        SockAddr::init(move |addr_storage, length| {
+            *addr_storage = storage.to_owned();
+            *length = len;
+            Ok(())
+        })?
+    };
+    addr.as_socket()
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))
 }
 

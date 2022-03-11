@@ -1,6 +1,6 @@
 [package]
 name = "slings"
-version = "0.3.10"
+version = "0.3.11"
 authors = ["cssivision <cssivision@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/cssivision/slings"
@@ -16,5 +16,4 @@ slab = "0.4"
 libc = "0.2"
 futures-util = { version = "0.3", default-features = false, features = ["io"] }
 pin-project-lite = "0.2"
-os_socketaddr = "0.2.0"
-socket2 = { version = "0.4", features = [ "all"] }
+socket2 = { version = "0.4", features = ["all"] }

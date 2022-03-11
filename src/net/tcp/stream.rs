@@ -5,6 +5,7 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use futures_util::io::{AsyncBufRead, AsyncRead, AsyncWrite};
+use socket2::SockAddr;
 
 use crate::driver::{self, Socket};
 
@@ -31,7 +32,7 @@ impl TcpStream {
 
     async fn connect_addr(addr: SocketAddr) -> io::Result<TcpStream> {
         let socket = Socket::new(addr, libc::SOCK_STREAM)?;
-        socket.connect(addr).await?;
+        socket.connect(SockAddr::from(addr)).await?;
         Ok(TcpStream {
             inner: driver::Stream::new(socket),
         })

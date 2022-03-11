@@ -5,14 +5,14 @@ use std::pin::Pin;
 use std::task::{Context, Poll};
 
 use io_uring::{opcode, types};
-use os_socketaddr::OsSocketAddr;
+use socket2::SockAddr;
 
 use crate::driver::{Action, SharedFd};
 
 #[allow(dead_code)]
 pub(crate) struct RecvMsg {
     fd: SharedFd,
-    pub(crate) os_socket_addr: Box<OsSocketAddr>,
+    pub(crate) socket_addr: Box<SockAddr>,
     io_slices: Vec<IoSliceMut<'static>>,
     buf: Vec<u8>,
     pub(crate) msghdr: Box<libc::msghdr>,
@@ -24,15 +24,15 @@ impl Action<RecvMsg> {
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
         })];
-        let mut os_socket_addr = Box::new(OsSocketAddr::new());
+        let socket_addr = Box::new(unsafe { SockAddr::init(|_, _| Ok(()))?.1 });
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_mut_ptr().cast();
         msghdr.msg_iovlen = io_slices.len() as _;
-        msghdr.msg_name = os_socket_addr.as_mut_ptr() as *mut libc::c_void;
-        msghdr.msg_namelen = os_socket_addr.capacity();
+        msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
+        msghdr.msg_namelen = socket_addr.len();
         let mut recv_msg = RecvMsg {
             fd: fd.clone(),
-            os_socket_addr,
+            socket_addr,
             buf,
             msghdr,
             io_slices,
@@ -53,7 +53,10 @@ impl Action<RecvMsg> {
         let mut action = completion.action;
         unsafe { action.buf.set_len(n) };
         buf[..n].copy_from_slice(&action.buf[..n]);
-        let socket_addr: Option<SocketAddr> = (*action.os_socket_addr).into();
-        Poll::Ready(Ok((n, socket_addr.unwrap())))
+        let socket_addr = action
+            .socket_addr
+            .as_socket()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))?;
+        Poll::Ready(Ok((n, socket_addr)))
     }
 }
