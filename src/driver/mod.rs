@@ -112,14 +112,14 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
-    pub(crate) fn try_submit(&self, sqe: Entry) -> io::Result<usize> {
+    pub(crate) fn try_submit<T>(&self, action: T, sqe: Entry) -> io::Result<Action<T>> {
         if self.inner.try_borrow_mut().is_err() {
             return Err(io::ErrorKind::Other.into());
         }
-        self.submit(sqe)
+        self.submit(action, sqe)
     }
 
-    pub(crate) fn submit(&self, sqe: Entry) -> io::Result<usize> {
+    pub(crate) fn submit<T>(&self, action: T, sqe: Entry) -> io::Result<Action<T>> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let key = inner.actions.insert(State::Submitted);
@@ -135,7 +135,11 @@ impl Driver {
             ring.submission().push(&sqe).expect("push entry fail");
         }
         ring.submit()?;
-        Ok(key)
+        Ok(Action {
+            driver: self.clone(),
+            action: Some(action),
+            key,
+        })
     }
 }
 

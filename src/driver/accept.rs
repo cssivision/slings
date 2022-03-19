@@ -1,4 +1,5 @@
 use std::io;
+use std::mem;
 
 use io_uring::{opcode, types};
 
@@ -14,8 +15,8 @@ pub struct Accept {
 impl Action<Accept> {
     pub(crate) fn accept(fd: &SharedFd) -> io::Result<Action<Accept>> {
         let mut socketaddr = Box::new((
-            unsafe { std::mem::zeroed() },
-            std::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t,
+            unsafe { mem::zeroed() },
+            mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t,
         ));
         let entry = opcode::Accept::new(
             types::Fd(fd.raw_fd()),

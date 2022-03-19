@@ -16,25 +16,11 @@ pub(crate) struct Action<T: 'static> {
 
 impl<T> Action<T> {
     pub(crate) fn submit(action: T, entry: Entry) -> io::Result<Action<T>> {
-        driver::CURRENT.with(|driver| {
-            let key = driver.submit(entry)?;
-            Ok(Action {
-                driver: driver.clone(),
-                action: Some(action),
-                key,
-            })
-        })
+        driver::CURRENT.with(|driver| driver.submit(action, entry))
     }
 
     pub(crate) fn try_submit(action: T, entry: Entry) -> io::Result<Action<T>> {
-        driver::CURRENT.with(|driver| {
-            let key = driver.try_submit(entry)?;
-            Ok(Action {
-                driver: driver.clone(),
-                action: Some(action),
-                key,
-            })
-        })
+        driver::CURRENT.with(|driver| driver.try_submit(action, entry))
     }
 }
 
