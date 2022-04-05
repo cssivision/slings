@@ -4,4 +4,4 @@ https://github.com/cssivision/slings/actions)
 [![License](http://img.shields.io/badge/license-mit-blue.svg)](https://github.com/cssivision/slings/blob/master/LICENSE)
 
 # slings
-A single thread async runtime based on [io-uring](https://kernel.dk/io_uring.pdf). Linux 5.7 or higher with IORING_FEAT_FAST_POLL and IORING_OP_PROVIDE_BUFFERS required.
+A single thread async runtime based on [io-uring](https://kernel.dk/io_uring.pdf). Linux 5.11 or higher with IORING_FEAT_FAST_POLL required.
