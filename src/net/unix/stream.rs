@@ -8,7 +8,7 @@ use std::task::{Context, Poll};
 use futures_util::{AsyncBufRead, AsyncRead, AsyncWrite};
 use socket2::SockAddr;
 
-use crate::socket::{self, Socket, SocketAddr};
+use crate::socket::{self, socketaddr::SocketAddr, Socket};
 
 pub struct UnixStream {
     inner: socket::Stream,

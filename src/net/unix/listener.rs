@@ -4,7 +4,7 @@ use std::os::unix::net;
 use std::path::Path;
 
 use super::UnixStream;
-use crate::socket::{Socket, SocketAddr};
+use crate::socket::{socketaddr::SocketAddr, Socket};
 
 pub struct UnixListener {
     inner: Socket,
