@@ -3,7 +3,8 @@ use std::net;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::driver::{self, Action, SharedFd, Socket};
+use super::Socket;
+use crate::driver::{self, Action, SharedFd};
 
 const DEFAULT_BUFFER_SIZE: usize = 4096;
 

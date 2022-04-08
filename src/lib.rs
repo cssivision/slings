@@ -38,6 +38,7 @@ mod driver;
 mod local_executor;
 pub mod net;
 pub mod runtime;
+mod socket;
 pub mod time;
 mod waker_fn;
 

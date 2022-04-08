@@ -4,7 +4,8 @@ use std::net::SocketAddr;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use crate::driver::{self, Action, SharedFd, Socket};
+use super::Socket;
+use crate::driver::{self, Action, SharedFd};
 
 pub(crate) struct Packet {
     inner: RefCell<Inner>,

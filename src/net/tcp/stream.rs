@@ -7,17 +7,17 @@ use std::task::{Context, Poll};
 use futures_util::io::{AsyncBufRead, AsyncRead, AsyncWrite};
 use socket2::SockAddr;
 
-use crate::driver::{self, Socket};
+use crate::socket::{self, Socket};
 
 pub struct TcpStream {
-    inner: driver::Stream,
+    inner: socket::Stream,
 }
 
 impl FromRawFd for TcpStream {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
         let socket = Socket::from_raw_fd(fd);
         TcpStream {
-            inner: driver::Stream::new(socket),
+            inner: socket::Stream::new(socket),
         }
     }
 }
@@ -26,7 +26,7 @@ impl TcpStream {
     pub fn from_std(stream: net::TcpStream) -> TcpStream {
         let socket = unsafe { Socket::from_raw_fd(stream.as_raw_fd()) };
         TcpStream {
-            inner: driver::Stream::new(socket),
+            inner: socket::Stream::new(socket),
         }
     }
 
@@ -34,7 +34,7 @@ impl TcpStream {
         let socket = Socket::new(addr, libc::SOCK_STREAM)?;
         socket.connect(SockAddr::from(addr)).await?;
         Ok(TcpStream {
-            inner: driver::Stream::new(socket),
+            inner: socket::Stream::new(socket),
         })
     }
 
@@ -107,7 +107,7 @@ impl AsyncWrite for TcpStream {
 impl From<Socket> for TcpStream {
     fn from(socket: Socket) -> Self {
         TcpStream {
-            inner: driver::Stream::new(socket),
+            inner: socket::Stream::new(socket),
         }
     }
 }

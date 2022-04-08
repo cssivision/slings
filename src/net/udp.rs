@@ -4,7 +4,7 @@ use std::net::{SocketAddr, ToSocketAddrs};
 use futures_util::future::poll_fn;
 use socket2::SockAddr;
 
-use crate::driver::{Packet, Socket};
+use crate::socket::{Packet, Socket};
 
 pub struct UdpSocket {
     inner: Packet,

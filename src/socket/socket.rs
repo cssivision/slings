@@ -2,9 +2,9 @@ use std::io;
 use std::mem;
 use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
+use std::path::Path;
 
-use crate::driver::shared_fd::SharedFd;
-use crate::driver::Action;
+use crate::driver::{Action, SharedFd};
 
 use socket2::SockAddr;
 
@@ -29,6 +29,14 @@ impl Socket {
         Ok(Socket { fd })
     }
 
+    pub(crate) fn new_unix(socket_type: libc::c_int) -> io::Result<Socket> {
+        let socket_type = socket_type | libc::SOCK_CLOEXEC;
+        let domain = libc::AF_UNIX;
+        let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
+        let fd = SharedFd::new(fd);
+        Ok(Socket { fd })
+    }
+
     pub(crate) async fn connect(&self, sock_addr: SockAddr) -> io::Result<()> {
         let action = Action::connect(&self.fd, sock_addr)?;
         let completion = action.await;
@@ -42,6 +50,14 @@ impl Socket {
             get_domain(socket_addr).into(),
             socket_type.into(),
         )
+    }
+
+    pub(crate) fn bind_unix<P: AsRef<Path>>(
+        path: P,
+        socket_type: libc::c_int,
+    ) -> io::Result<Socket> {
+        let addr = socket2::SockAddr::unix(path.as_ref())?;
+        Socket::bind_internal(addr, libc::AF_UNIX.into(), socket_type.into())
     }
 
     fn bind_internal(
@@ -78,12 +94,25 @@ impl Socket {
         Ok((socket, addr.as_socket()))
     }
 
+    pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, super::SocketAddr)> {
+        let completion = Action::accept(&self.fd)?.await;
+        let fd = completion.result?;
+        let fd = SharedFd::new(fd as i32);
+        let socket = Socket { fd };
+        let data = completion.action;
+        let mut storage = data.socketaddr.0.to_owned();
+        let socklen = data.socketaddr.1;
+        let storage: *mut libc::sockaddr_storage = &mut storage as *mut _;
+        let sockaddr: libc::sockaddr_un = unsafe { *storage.cast() };
+        Ok((socket, super::SocketAddr::from_parts(sockaddr, socklen)))
+    }
+
     pub(crate) fn local_addr(&self) -> io::Result<SocketAddr> {
-        sockname(|buf, len| unsafe { libc::getsockname(self.as_raw_fd(), buf, len) })
+        sockname(|buf, len| syscall!(getsockname(self.as_raw_fd(), buf, len)))
     }
 
     pub(crate) fn peer_addr(&self) -> io::Result<SocketAddr> {
-        sockname(|buf, len| unsafe { libc::getpeername(self.as_raw_fd(), buf, len) })
+        sockname(|buf, len| syscall!(getpeername(self.as_raw_fd(), buf, len)))
     }
 
     pub(crate) fn set_nodelay(&self, nodelay: bool) -> io::Result<()> {
@@ -115,14 +144,11 @@ fn setsockopt<T>(
 
 fn sockname<F>(f: F) -> io::Result<SocketAddr>
 where
-    F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> libc::c_int,
+    F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> io::Result<libc::c_int>,
 {
     let mut storage: libc::sockaddr_storage = unsafe { mem::zeroed() };
     let mut len = mem::size_of_val(&storage) as libc::socklen_t;
-    let res = f(&mut storage as *mut _ as *mut _, &mut len);
-    if res == -1 {
-        return Err(io::Error::last_os_error());
-    }
+    f(&mut storage as *mut _ as *mut _, &mut len)?;
     let (_, addr) = unsafe {
         SockAddr::init(move |addr_storage, length| {
             *addr_storage = storage.to_owned();
