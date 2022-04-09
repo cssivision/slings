@@ -48,8 +48,6 @@ use std::future::Future;
 pub use local_executor::spawn_local;
 pub use runtime::Runtime;
 
-pub use async_task::Task;
-
 pub fn block_on<F>(future: F) -> F::Output
 where
     F: Future,
