@@ -1,9 +1,9 @@
 use std::io;
 use std::time::Duration;
 
+use futures_util::AsyncReadExt;
 use slings::net::UnixStream;
 use slings::time::delay_for;
-use slings::AsyncReadExt;
 
 fn main() -> io::Result<()> {
     slings::block_on(async {

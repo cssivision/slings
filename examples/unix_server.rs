@@ -1,9 +1,9 @@
 use std::io;
 use std::time::Duration;
 
+use futures_util::AsyncWriteExt;
 use slings::net::UnixListener;
 use slings::time::delay_for;
-use slings::AsyncWriteExt;
 
 fn main() -> io::Result<()> {
     slings::block_on(async {

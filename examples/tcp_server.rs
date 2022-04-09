@@ -2,9 +2,9 @@ use std::io;
 use std::net::SocketAddr;
 use std::time::Duration;
 
+use futures_util::AsyncWriteExt;
 use slings::net::TcpListener;
 use slings::time::delay_for;
-use slings::AsyncWriteExt;
 
 fn main() -> io::Result<()> {
     slings::block_on(async {
