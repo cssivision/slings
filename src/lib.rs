@@ -35,6 +35,7 @@ macro_rules! ready {
 }
 
 mod driver;
+mod future;
 mod local_executor;
 pub mod net;
 pub mod runtime;
@@ -48,7 +49,6 @@ pub use local_executor::spawn_local;
 pub use runtime::Runtime;
 
 pub use async_task::Task;
-pub use futures_util::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 
 pub fn block_on<F>(future: F) -> F::Output
 where

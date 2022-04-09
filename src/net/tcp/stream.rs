@@ -4,7 +4,7 @@ use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures_util::io::{AsyncBufRead, AsyncRead, AsyncWrite};
+use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
 use socket2::SockAddr;
 
 use crate::socket::{self, Socket};

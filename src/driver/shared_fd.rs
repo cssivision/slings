@@ -5,10 +5,9 @@ use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Poll, Waker};
 
-use futures_util::future::poll_fn;
-
 use super::close::Close;
 use crate::driver::Action;
+use crate::future::poll_fn;
 
 #[derive(Clone)]
 pub(crate) struct SharedFd {

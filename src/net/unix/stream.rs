@@ -5,7 +5,7 @@ use std::path::Path;
 use std::pin::Pin;
 use std::task::{Context, Poll};
 
-use futures_util::{AsyncBufRead, AsyncRead, AsyncWrite};
+use futures_io::{AsyncBufRead, AsyncRead, AsyncWrite};
 use socket2::SockAddr;
 
 use crate::socket::{self, socketaddr::SocketAddr, Socket};
