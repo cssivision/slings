@@ -1,7 +1,7 @@
 use std::io;
 use std::ops::Sub;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 use std::time::Instant;
 
 use crate::driver::{self, Action};
@@ -22,6 +22,7 @@ enum State {
 pub struct Timer {
     deadline: Instant,
     state: State,
+    waker: Option<Waker>,
 }
 
 impl Timer {
@@ -29,6 +30,7 @@ impl Timer {
         Timer {
             deadline,
             state: State::Idle,
+            waker: None,
         }
     }
 
@@ -43,6 +45,9 @@ impl Timer {
     pub fn reset(&mut self, when: Instant) {
         self.state = State::Idle;
         self.deadline = when;
+        if let Some(waker) = self.waker.take() {
+            waker.wake();
+        }
     }
 
     fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<Instant>> {
@@ -54,6 +59,16 @@ impl Timer {
                     self.state = State::Waiting(action);
                 }
                 State::Waiting(action) => {
+                    match &self.waker {
+                        Some(waker) => {
+                            if !waker.will_wake(cx.waker()) {
+                                self.waker = Some(cx.waker().clone());
+                            }
+                        }
+                        None => {
+                            self.waker = Some(cx.waker().clone());
+                        }
+                    }
                     ready!(Pin::new(action).poll_timeout(cx))?;
                     return Poll::Ready(Ok(self.deadline));
                 }
