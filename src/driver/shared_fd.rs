@@ -53,11 +53,6 @@ impl SharedFd {
 impl Inner {
     fn submit_close_action(&mut self) {
         let state = self.state.get_mut();
-        let waker = if let State::Waiting(waker) = state {
-            waker.take()
-        } else {
-            None
-        };
         *state = match Action::close(self.fd) {
             Ok(v) => State::Closing(v),
             Err(_) => {
@@ -65,9 +60,6 @@ impl Inner {
                 State::Closed
             }
         };
-        if let Some(waker) = waker {
-            waker.wake();
-        }
     }
 
     pub(crate) async fn closed(&self) {
