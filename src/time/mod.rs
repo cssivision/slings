@@ -45,12 +45,20 @@ impl Timer {
     pub fn reset(&mut self, when: Instant) {
         self.state = State::Idle;
         self.deadline = when;
-        if let Some(waker) = self.waker.take() {
-            waker.wake();
+        if let Some(waker) = self.waker.as_ref() {
+            let duration = self.deadline.sub(Instant::now());
+            let action = Action::timeout(duration.as_secs(), duration.subsec_nanos())
+                .expect("fail to submit timeout sqe");
+            action.insert_waker(waker.clone());
+            self.state = State::Waiting(action);
         }
     }
 
     fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<Instant>> {
+        if self.deadline <= Instant::now() {
+            return Poll::Ready(Ok(self.deadline));
+        }
+
         loop {
             match &mut self.state {
                 State::Idle => {
@@ -60,14 +68,13 @@ impl Timer {
                 }
                 State::Waiting(action) => {
                     match &self.waker {
-                        Some(waker) => {
-                            if !waker.will_wake(cx.waker()) {
-                                self.waker = Some(cx.waker().clone());
-                            }
+                        Some(waker) if !waker.will_wake(cx.waker()) => {
+                            self.waker = Some(cx.waker().clone());
                         }
                         None => {
                             self.waker = Some(cx.waker().clone());
                         }
+                        _ => {}
                     }
                     ready!(Pin::new(action).poll_timeout(cx))?;
                     return Poll::Ready(Ok(self.deadline));

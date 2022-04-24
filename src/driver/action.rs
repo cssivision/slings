@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io;
 use std::mem;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue::Entry;
 
@@ -21,6 +21,12 @@ impl<T> Action<T> {
 
     pub(crate) fn try_submit(action: T, entry: Entry) -> io::Result<Action<T>> {
         driver::CURRENT.with(|driver| driver.try_submit(action, entry))
+    }
+
+    pub(crate) fn insert_waker(&self, waker: Waker) {
+        let mut inner = self.driver.inner.borrow_mut();
+        let state = inner.actions.get_mut(self.key).expect("invalid state key");
+        *state = State::Waiting(waker);
     }
 }
 
