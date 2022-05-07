@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::future::Future;
-use std::os::unix::io::{FromRawFd, RawFd};
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Poll, Waker};
@@ -56,7 +56,7 @@ impl Inner {
         *state = match Action::close(self.fd) {
             Ok(v) => State::Closing(v),
             Err(_) => {
-                let _ = unsafe { std::fs::File::from_raw_fd(self.fd) };
+                let _ = unsafe { libc::close(self.fd) };
                 State::Closed
             }
         };
