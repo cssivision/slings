@@ -89,16 +89,15 @@ impl Driver {
         let mut cq = ring.completion();
         cq.sync();
         for cqe in cq {
-            let key = cqe.user_data();
-            if key == u64::MAX {
+            if cqe.user_data() == u64::MAX {
                 continue;
             }
-            let action = &mut inner.actions[key as usize];
+            let index = cqe.user_data() as _;
+            let action = &mut inner.actions[index];
             if action.complete(cqe) {
-                inner.actions.remove(key as usize);
+                inner.actions.remove(index);
             }
         }
-
         Ok(())
     }
 
