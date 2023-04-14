@@ -1,12 +1,12 @@
 [package]
 name = "slings"
-version = "0.3.17"
+version = "0.3.18"
 authors = ["cssivision <cssivision@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/cssivision/slings"
 homepage = "https://github.com/cssivision/slings"
 description = "A small async runtime based on io-uring for Rust"
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 io-uring = "0.6"
