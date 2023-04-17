@@ -1,5 +1,6 @@
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
+use std::task::{Context, Poll};
 
 use socket2::SockAddr;
 
@@ -70,8 +71,26 @@ impl UdpSocket {
         poll_fn(|cx| self.inner.poll_recv_from(cx, buf)).await
     }
 
+    pub fn poll_recv_from(
+        &self,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<io::Result<(usize, SocketAddr)>> {
+        self.inner.poll_recv_from(cx, buf)
+    }
+
     pub async fn send_to<A: Into<SocketAddr>>(&self, buf: &[u8], target: A) -> io::Result<usize> {
         let addr = target.into();
         poll_fn(|cx| self.inner.poll_send_to(cx, buf, addr)).await
+    }
+
+    pub fn poll_send_to<A: Into<SocketAddr>>(
+        &self,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+        target: A,
+    ) -> Poll<io::Result<usize>> {
+        let addr = target.into();
+        self.inner.poll_send_to(cx, buf, addr)
     }
 }
