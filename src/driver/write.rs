@@ -1,7 +1,7 @@
 use std::future::Future;
 use std::io;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 

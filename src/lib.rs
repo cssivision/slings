@@ -10,16 +10,6 @@ macro_rules! syscall {
     }};
 }
 
-#[macro_export]
-macro_rules! ready {
-    ($e:expr $(,)?) => {
-        match $e {
-            std::task::Poll::Ready(t) => t,
-            std::task::Poll::Pending => return core::task::Poll::Pending,
-        }
-    };
-}
-
 mod driver;
 mod local_executor;
 pub mod net;

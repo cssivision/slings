@@ -1,7 +1,7 @@
 use std::io;
 use std::ops::Sub;
 use std::pin::Pin;
-use std::task::{Context, Poll, Waker};
+use std::task::{ready, Context, Poll, Waker};
 use std::time::Instant;
 
 use crate::driver::{self, Action};

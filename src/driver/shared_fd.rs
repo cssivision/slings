@@ -3,7 +3,7 @@ use std::future::{poll_fn, Future};
 use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::rc::Rc;
-use std::task::{Poll, Waker};
+use std::task::{ready, Poll, Waker};
 
 use super::close::Close;
 use crate::driver::Action;

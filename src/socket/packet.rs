@@ -2,7 +2,7 @@ use std::cell::RefCell;
 use std::io;
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use super::Socket;
 use crate::driver::{self, Action, SharedFd};

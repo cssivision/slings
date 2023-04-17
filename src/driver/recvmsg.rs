@@ -2,7 +2,7 @@ use std::future::Future;
 use std::io::{self, IoSliceMut};
 use std::net::SocketAddr;
 use std::pin::Pin;
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 use socket2::SockAddr;
