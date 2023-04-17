@@ -28,7 +28,7 @@ fn next_task() -> Option<Runnable> {
 
 pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Task<T> {
     let schedule = move |runnable| {
-        let _ = GLOBAL_QUEUE.with(|queue| queue.borrow_mut().push_back(runnable));
+        GLOBAL_QUEUE.with(|queue| queue.borrow_mut().push_back(runnable));
     };
 
     let (runnable, task) = unsafe { async_task::spawn_unchecked(future, schedule) };

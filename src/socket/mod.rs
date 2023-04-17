@@ -88,7 +88,7 @@ impl Socket {
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
         let completion = Action::accept(&self.fd)?.await;
         let fd = completion.result?;
-        let fd = SharedFd::new(fd as i32);
+        let fd = SharedFd::new(fd);
         let socket = Socket { fd };
         let data = completion.action;
         let (_, addr) = unsafe {
@@ -104,7 +104,7 @@ impl Socket {
     pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, socketaddr::SocketAddr)> {
         let completion = Action::accept(&self.fd)?.await;
         let fd = completion.result?;
-        let fd = SharedFd::new(fd as i32);
+        let fd = SharedFd::new(fd);
         let socket = Socket { fd };
         let data = completion.action;
         let mut storage = data.socketaddr.0.to_owned();

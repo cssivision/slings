@@ -34,7 +34,7 @@ impl Action<Recv> {
         let completion = ready!(Pin::new(&mut *self).poll(cx));
         let n = completion.result? as usize;
         let mut action = completion.action;
-        unsafe { action.buf.set_len(n as usize) };
+        unsafe { action.buf.set_len(n) };
         buf[..n].copy_from_slice(&action.buf[..n]);
         Poll::Ready(Ok(n))
     }
