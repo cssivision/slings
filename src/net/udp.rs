@@ -1,10 +1,10 @@
+use std::future::poll_fn;
 use std::io;
 use std::net::{SocketAddr, ToSocketAddrs};
 use std::task::{Context, Poll};
 
 use socket2::SockAddr;
 
-use crate::future::poll_fn;
 use crate::socket::{Packet, Socket};
 
 pub struct UdpSocket {

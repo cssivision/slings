@@ -21,7 +21,6 @@ macro_rules! ready {
 }
 
 mod driver;
-mod future;
 mod local_executor;
 pub mod net;
 pub mod runtime;
