@@ -90,6 +90,7 @@ enum Read {
 enum Shutdown {
     Idle,
     Shutdowning(Action<driver::Shutdown>),
+    Done,
 }
 
 impl Inner {
@@ -106,9 +107,11 @@ impl Inner {
                     self.shutdown = Shutdown::Shutdowning(action);
                 }
                 Shutdown::Shutdowning(action) => {
-                    let n = ready!(Pin::new(action).poll_shutdown(cx))?;
-                    self.shutdown = Shutdown::Idle;
-                    return Poll::Ready(Ok(n));
+                    ready!(Pin::new(action).poll_shutdown(cx))?;
+                    self.shutdown = Shutdown::Done;
+                }
+                Shutdown::Done => {
+                    return Poll::Ready(Ok(()));
                 }
             }
         }
