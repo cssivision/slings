@@ -1,5 +1,6 @@
 use std::future::Future;
 use std::io;
+use std::pin::pin;
 use std::task::{Context, Poll};
 
 use crate::driver::Driver;
@@ -21,7 +22,7 @@ impl Runtime {
     where
         F: Future,
     {
-        pin_mut!(future);
+        let mut future = pin!(future);
         let waker = waker_fn(|| {});
         let cx = &mut Context::from_waker(&waker);
 
