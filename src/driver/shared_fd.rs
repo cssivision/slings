@@ -93,11 +93,9 @@ impl Inner {
 
 impl Drop for Inner {
     fn drop(&mut self) {
-        match self.state.get_mut() {
-            State::Init | State::Waiting(..) => {
-                self.submit_close_action();
-            }
-            _ => {}
+        if let State::Closed = self.state.get_mut() {
+            return;
         }
+        let _ = unsafe { libc::close(self.fd) };
     }
 }
