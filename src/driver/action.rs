@@ -40,12 +40,13 @@ impl<T> Drop for Action<T> {
 
         match state {
             State::Submitted | State::Waiting(_) => {
-                *state = State::Ignored(Box::new(self.action.take()));
+                let _ = self.action.take();
+                *state = State::Ignored;
             }
             State::Completed(..) => {
                 inner.actions.remove(self.key);
             }
-            State::Ignored(..) => unreachable!(),
+            State::Ignored => unreachable!(),
         }
     }
 }
@@ -74,7 +75,7 @@ where
                 }
                 Poll::Pending
             }
-            State::Ignored(..) => unreachable!(),
+            State::Ignored => unreachable!(),
             State::Completed(cqe) => {
                 inner.actions.remove(me.key);
                 me.key = usize::MAX;

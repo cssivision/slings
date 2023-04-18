@@ -1,8 +1,6 @@
-use std::any::Any;
 use std::cell::RefCell;
 use std::io;
 use std::mem;
-use std::panic;
 use std::rc::Rc;
 use std::task::Waker;
 
@@ -58,11 +56,6 @@ struct Inner {
 impl Driver {
     pub(crate) fn new() -> io::Result<Driver> {
         let ring = IoUring::new(256)?;
-        // check if IORING_FEAT_FAST_POLL is supported
-        if !ring.params().is_feature_fast_poll() {
-            panic!("IORING_FEAT_FAST_POLL not supported");
-        }
-
         let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
@@ -144,7 +137,7 @@ enum State {
     /// The operation has completed.
     Completed(cqueue::Entry),
     /// Ignored
-    Ignored(Box<dyn Any>),
+    Ignored,
 }
 
 impl State {
@@ -159,7 +152,7 @@ impl State {
                 waker.wake();
                 false
             }
-            State::Ignored(..) => true,
+            State::Ignored => true,
             State::Completed(..) => unreachable!("invalid operation state"),
         }
     }
