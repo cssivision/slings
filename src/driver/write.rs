@@ -1,31 +1,24 @@
 use std::future::Future;
 use std::io;
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, SharedFd};
+use crate::driver::Action;
 
 #[allow(dead_code)]
 pub(crate) struct Write {
-    fd: SharedFd,
     buf: Vec<u8>,
 }
 
 impl Action<Write> {
-    pub(crate) fn write(fd: &SharedFd, buf: &[u8]) -> io::Result<Action<Write>> {
+    pub(crate) fn write(fd: RawFd, buf: &[u8]) -> io::Result<Action<Write>> {
         let buf = buf.to_vec();
-        let write = Write {
-            buf,
-            fd: fd.clone(),
-        };
-        let entry = opcode::Write::new(
-            types::Fd(write.fd.raw_fd()),
-            write.buf.as_ptr(),
-            write.buf.len() as u32,
-        )
-        .build();
+        let write = Write { buf };
+        let entry =
+            opcode::Write::new(types::Fd(fd), write.buf.as_ptr(), write.buf.len() as u32).build();
         Action::submit(write, entry)
     }
 

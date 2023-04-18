@@ -1,17 +1,17 @@
 use std::future::Future;
 use std::io::{self, IoSliceMut};
 use std::net::SocketAddr;
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::{Action, SharedFd};
+use crate::driver::Action;
 
 #[allow(dead_code)]
 pub(crate) struct SendMsg {
-    fd: SharedFd,
     pub(crate) socket_addr: Box<SockAddr>,
     pub(crate) buf: Vec<u8>,
     io_slices: Vec<IoSliceMut<'static>>,
@@ -20,7 +20,7 @@ pub(crate) struct SendMsg {
 
 impl Action<SendMsg> {
     pub(crate) fn sendmsg(
-        fd: &SharedFd,
+        fd: RawFd,
         buf: &[u8],
         socket_addr: SocketAddr,
     ) -> io::Result<Action<SendMsg>> {
@@ -40,11 +40,8 @@ impl Action<SendMsg> {
             msghdr,
             socket_addr,
             io_slices,
-            fd: fd.clone(),
         };
-        let entry =
-            opcode::SendMsg::new(types::Fd(fd.raw_fd()), send_msg.msghdr.as_mut() as *mut _)
-                .build();
+        let entry = opcode::SendMsg::new(types::Fd(fd), send_msg.msghdr.as_mut() as *mut _).build();
         Action::submit(send_msg, entry)
     }
 

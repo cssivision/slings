@@ -1,10 +1,11 @@
 use std::io;
 use std::net;
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use super::Socket;
-use crate::driver::{self, Action, SharedFd};
+use crate::driver::{self, Action};
 
 const DEFAULT_BUFFER_SIZE: usize = 4096;
 
@@ -36,7 +37,7 @@ impl Stream {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        let src = ready!(self.inner.poll_fill_buf(cx, &self.io.fd))?;
+        let src = ready!(self.inner.poll_fill_buf(cx, self.io.fd))?;
         let n = buf.len().min(src.len());
         buf[..n].copy_from_slice(&src[..n]);
         self.inner.consume(n);
@@ -44,7 +45,7 @@ impl Stream {
     }
 
     pub(crate) fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        self.inner.poll_fill_buf(cx, &self.io.fd)
+        self.inner.poll_fill_buf(cx, self.io.fd)
     }
 
     pub(crate) fn consume(&mut self, amt: usize) {
@@ -52,7 +53,7 @@ impl Stream {
     }
 
     pub(crate) fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
-        self.inner.poll_write(cx, buf, &self.io.fd)
+        self.inner.poll_write(cx, buf, self.io.fd)
     }
 
     pub(crate) fn poll_shutdown(
@@ -65,7 +66,7 @@ impl Stream {
             net::Shutdown::Read => libc::SHUT_RD,
             net::Shutdown::Both => libc::SHUT_RDWR,
         };
-        self.inner.poll_shutdown(cx, &self.io.fd, how)
+        self.inner.poll_shutdown(cx, self.io.fd, how)
     }
 }
 
@@ -97,7 +98,7 @@ impl Inner {
     fn poll_shutdown(
         &mut self,
         cx: &mut Context,
-        fd: &SharedFd,
+        fd: RawFd,
         how: libc::c_int,
     ) -> Poll<io::Result<()>> {
         loop {
@@ -117,12 +118,7 @@ impl Inner {
         }
     }
 
-    fn poll_write(
-        &mut self,
-        cx: &mut Context,
-        buf: &[u8],
-        fd: &SharedFd,
-    ) -> Poll<io::Result<usize>> {
+    fn poll_write(&mut self, cx: &mut Context, buf: &[u8], fd: RawFd) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.write {
                 Write::Idle => {
@@ -138,7 +134,7 @@ impl Inner {
         }
     }
 
-    fn poll_fill_buf(&mut self, cx: &mut Context, fd: &SharedFd) -> Poll<io::Result<&[u8]>> {
+    fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
         loop {
             match &mut self.read {
                 Read::Idle => {

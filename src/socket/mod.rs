@@ -11,13 +11,12 @@ use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
-use crate::driver::{Action, SharedFd};
+use crate::driver::Action;
 
 use socket2::SockAddr;
 
-#[derive(Clone)]
 pub(crate) struct Socket {
-    pub(crate) fd: SharedFd,
+    pub(crate) fd: RawFd,
 }
 
 fn get_domain(socket_addr: SocketAddr) -> libc::c_int {
@@ -32,7 +31,6 @@ impl Socket {
         let socket_type = socket_type | libc::SOCK_CLOEXEC;
         let domain = get_domain(socket_addr);
         let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
-        let fd = SharedFd::new(fd);
         Ok(Socket { fd })
     }
 
@@ -40,12 +38,11 @@ impl Socket {
         let socket_type = socket_type | libc::SOCK_CLOEXEC;
         let domain = libc::AF_UNIX;
         let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
-        let fd = SharedFd::new(fd);
         Ok(Socket { fd })
     }
 
     pub(crate) async fn connect(&self, sock_addr: SockAddr) -> io::Result<()> {
-        let action = Action::connect(&self.fd, sock_addr)?;
+        let action = Action::connect(self.fd, sock_addr)?;
         let completion = action.await;
         completion.result?;
         Ok(())
@@ -76,7 +73,7 @@ impl Socket {
         sys_listener.set_reuse_port(true)?;
         sys_listener.set_reuse_address(true)?;
         sys_listener.bind(&socket_addr)?;
-        let fd = SharedFd::new(sys_listener.into_raw_fd());
+        let fd = sys_listener.into_raw_fd();
         Ok(Self { fd })
     }
 
@@ -86,9 +83,8 @@ impl Socket {
     }
 
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
-        let completion = Action::accept(&self.fd)?.await;
+        let completion = Action::accept(self.fd)?.await;
         let fd = completion.result?;
-        let fd = SharedFd::new(fd);
         let socket = Socket { fd };
         let data = completion.action;
         let (_, addr) = unsafe {
@@ -102,9 +98,8 @@ impl Socket {
     }
 
     pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, socketaddr::SocketAddr)> {
-        let completion = Action::accept(&self.fd)?.await;
+        let completion = Action::accept(self.fd)?.await;
         let fd = completion.result?;
-        let fd = SharedFd::new(fd);
         let socket = Socket { fd };
         let data = completion.action;
         let mut storage = data.socketaddr.0.to_owned();
@@ -170,16 +165,20 @@ where
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))
 }
 
+impl Drop for Socket {
+    fn drop(&mut self) {
+        let _ = unsafe { libc::close(self.fd) };
+    }
+}
+
 impl AsRawFd for Socket {
     fn as_raw_fd(&self) -> RawFd {
-        self.fd.raw_fd()
+        self.fd
     }
 }
 
 impl FromRawFd for Socket {
     unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        Socket {
-            fd: SharedFd::new(fd),
-        }
+        Socket { fd }
     }
 }

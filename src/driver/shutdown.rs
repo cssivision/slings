@@ -1,21 +1,20 @@
 use std::future::Future;
 use std::io;
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, SharedFd};
+use crate::driver::Action;
 
 #[allow(dead_code)]
-pub(crate) struct Shutdown {
-    fd: SharedFd,
-}
+pub(crate) struct Shutdown;
 
 impl Action<Shutdown> {
-    pub(crate) fn shutdown(fd: &SharedFd, how: libc::c_int) -> io::Result<Action<Shutdown>> {
-        let shutdown = Shutdown { fd: fd.clone() };
-        let entry = opcode::Shutdown::new(types::Fd(fd.raw_fd()), how).build();
+    pub(crate) fn shutdown(fd: RawFd, how: libc::c_int) -> io::Result<Action<Shutdown>> {
+        let shutdown = Shutdown;
+        let entry = opcode::Shutdown::new(types::Fd(fd), how).build();
         Action::submit(shutdown, entry)
     }
 

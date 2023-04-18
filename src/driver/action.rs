@@ -19,10 +19,6 @@ impl<T> Action<T> {
         driver::CURRENT.with(|driver| driver.submit(action, entry))
     }
 
-    pub(crate) fn try_submit(action: T, entry: Entry) -> io::Result<Action<T>> {
-        driver::CURRENT.with(|driver| driver.try_submit(action, entry))
-    }
-
     pub(crate) fn insert_waker(&self, waker: Waker) {
         let mut inner = self.driver.inner.borrow_mut();
         let state = inner.actions.get_mut(self.key).expect("invalid state key");
@@ -40,13 +36,12 @@ impl<T> Drop for Action<T> {
 
         match state {
             State::Submitted | State::Waiting(_) => {
-                let _ = self.action.take();
-                *state = State::Ignored;
+                *state = State::Ignored(Box::new(self.action.take()));
             }
             State::Completed(..) => {
                 inner.actions.remove(self.key);
             }
-            State::Ignored => unreachable!(),
+            State::Ignored(..) => unreachable!(),
         }
     }
 }
@@ -75,7 +70,7 @@ where
                 }
                 Poll::Pending
             }
-            State::Ignored => unreachable!(),
+            State::Ignored(..) => unreachable!(),
             State::Completed(cqe) => {
                 inner.actions.remove(me.key);
                 me.key = usize::MAX;

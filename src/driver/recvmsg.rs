@@ -1,17 +1,17 @@
 use std::future::Future;
 use std::io::{self, IoSliceMut};
 use std::net::SocketAddr;
+use std::os::unix::io::RawFd;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::{Action, SharedFd};
+use crate::driver::Action;
 
 #[allow(dead_code)]
 pub(crate) struct RecvMsg {
-    fd: SharedFd,
     pub(crate) socket_addr: Box<SockAddr>,
     io_slices: Vec<IoSliceMut<'static>>,
     buf: Vec<u8>,
@@ -19,7 +19,7 @@ pub(crate) struct RecvMsg {
 }
 
 impl Action<RecvMsg> {
-    pub(crate) fn recvmsg(fd: &SharedFd, len: usize) -> io::Result<Action<RecvMsg>> {
+    pub(crate) fn recvmsg(fd: RawFd, len: usize) -> io::Result<Action<RecvMsg>> {
         let mut buf = Vec::with_capacity(len);
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
@@ -31,15 +31,12 @@ impl Action<RecvMsg> {
         msghdr.msg_name = socket_addr.as_ptr() as *mut libc::c_void;
         msghdr.msg_namelen = socket_addr.len();
         let mut recv_msg = RecvMsg {
-            fd: fd.clone(),
             socket_addr,
             buf,
             msghdr,
             io_slices,
         };
-        let entry =
-            opcode::RecvMsg::new(types::Fd(fd.raw_fd()), recv_msg.msghdr.as_mut() as *mut _)
-                .build();
+        let entry = opcode::RecvMsg::new(types::Fd(fd), recv_msg.msghdr.as_mut() as *mut _).build();
         Action::submit(recv_msg, entry)
     }
 

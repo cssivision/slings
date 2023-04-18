@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::RefCell;
 use std::io;
 use std::mem;
@@ -11,14 +12,12 @@ use slab::Slab;
 
 mod accept;
 mod action;
-mod close;
 mod connect;
 mod read;
 mod recv;
 mod recvmsg;
 mod send;
 mod sendmsg;
-mod shared_fd;
 mod shutdown;
 mod timeout;
 mod write;
@@ -29,7 +28,6 @@ pub(crate) use recv::Recv;
 pub(crate) use recvmsg::RecvMsg;
 pub(crate) use send::Send;
 pub(crate) use sendmsg::SendMsg;
-pub(crate) use shared_fd::SharedFd;
 pub(crate) use shutdown::Shutdown;
 pub(crate) use timeout::Timeout;
 pub(crate) use write::Write;
@@ -98,13 +96,6 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
-    pub(crate) fn try_submit<T>(&self, action: T, sqe: Entry) -> io::Result<Action<T>> {
-        if self.inner.try_borrow_mut().is_err() {
-            return Err(io::ErrorKind::Other.into());
-        }
-        self.submit(action, sqe)
-    }
-
     pub(crate) fn submit<T>(&self, action: T, sqe: Entry) -> io::Result<Action<T>> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
@@ -137,7 +128,7 @@ enum State {
     /// The operation has completed.
     Completed(cqueue::Entry),
     /// Ignored
-    Ignored,
+    Ignored(Box<dyn Any>),
 }
 
 impl State {
@@ -152,7 +143,7 @@ impl State {
                 waker.wake();
                 false
             }
-            State::Ignored => true,
+            State::Ignored(..) => true,
             State::Completed(..) => unreachable!("invalid operation state"),
         }
     }
