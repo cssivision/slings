@@ -120,8 +120,8 @@ impl Driver {
         let ring = &mut inner.ring;
         if ring.submission().is_full() {
             ring.submit()?;
-            ring.submission().sync();
         }
+        ring.submission().sync();
 
         let sqe = sqe.user_data(key as u64);
         unsafe {
