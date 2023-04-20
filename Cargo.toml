@@ -1,6 +1,6 @@
 [package]
 name = "slings"
-version = "0.3.29"
+version = "0.3.30"
 authors = ["cssivision <cssivision@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/cssivision/slings"
@@ -17,7 +17,7 @@ libc = "0.2"
 futures-io = "0.3"
 futures-core = "0.3"
 pin-project-lite = "0.2"
-socket2 = { version = "0.4", features = ["all"] }
+socket2 = { version = "0.5", features = ["all"] }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["io"] }

@@ -24,7 +24,7 @@ impl Action<RecvMsg> {
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
         })];
-        let socket_addr = Box::new(unsafe { SockAddr::init(|_, _| Ok(()))?.1 });
+        let socket_addr = Box::new(unsafe { SockAddr::try_init(|_, _| Ok(()))?.1 });
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
         msghdr.msg_iov = io_slices.as_mut_ptr().cast();
         msghdr.msg_iovlen = io_slices.len() as _;

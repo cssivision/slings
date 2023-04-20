@@ -88,7 +88,7 @@ impl Socket {
         let socket = Socket { fd };
         let data = completion.action;
         let (_, addr) = unsafe {
-            SockAddr::init(move |addr_storage, len| {
+            SockAddr::try_init(move |addr_storage, len| {
                 *addr_storage = data.socketaddr.0.to_owned();
                 *len = data.socketaddr.1;
                 Ok(())
@@ -155,7 +155,7 @@ where
     let mut len = mem::size_of_val(&storage) as libc::socklen_t;
     f(&mut storage as *mut _ as *mut _, &mut len)?;
     let (_, addr) = unsafe {
-        SockAddr::init(move |addr_storage, length| {
+        SockAddr::try_init(move |addr_storage, length| {
             *addr_storage = storage.to_owned();
             *length = len;
             Ok(())
