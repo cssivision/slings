@@ -21,12 +21,15 @@ mod waker_fn;
 use std::future::Future;
 
 pub use local_executor::spawn_local;
-pub use runtime::Runtime;
+use runtime::Runtime;
+
+thread_local! {
+    static RUNTIME: Runtime = Runtime::new().expect("new runtime fail");
+}
 
 pub fn block_on<F>(future: F) -> F::Output
 where
     F: Future,
 {
-    let runtime = Runtime::new().expect("new runtime fail");
-    runtime.block_on(future)
+    RUNTIME.with(|runtime| runtime.block_on(future))
 }

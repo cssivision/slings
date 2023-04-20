@@ -1,6 +1,6 @@
 [package]
 name = "slings"
-version = "0.3.28"
+version = "0.3.29"
 authors = ["cssivision <cssivision@gmail.com>"]
 license = "MIT"
 repository = "https://github.com/cssivision/slings"

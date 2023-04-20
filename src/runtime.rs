@@ -7,7 +7,7 @@ use crate::driver::Driver;
 use crate::local_executor;
 use crate::waker_fn::waker_fn;
 
-pub struct Runtime {
+pub(crate) struct Runtime {
     driver: Driver,
 }
 
