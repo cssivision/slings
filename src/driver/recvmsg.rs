@@ -1,21 +1,18 @@
-use std::future::Future;
 use std::io::{self, IoSliceMut};
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
-use std::pin::Pin;
-use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::Action;
+use crate::driver::{Action, Completable, CqeResult};
 
 #[allow(dead_code)]
 pub(crate) struct RecvMsg {
-    pub(crate) socket_addr: Box<SockAddr>,
+    socket_addr: Box<SockAddr>,
     io_slices: Vec<IoSliceMut<'static>>,
     buf: Vec<u8>,
-    pub(crate) msghdr: Box<libc::msghdr>,
+    msghdr: Box<libc::msghdr>,
 }
 
 impl Action<RecvMsg> {
@@ -39,21 +36,18 @@ impl Action<RecvMsg> {
         let entry = opcode::RecvMsg::new(types::Fd(fd), recv_msg.msghdr.as_mut() as *mut _).build();
         Action::submit(recv_msg, entry)
     }
+}
 
-    pub(crate) fn poll_recv_from(
-        &mut self,
-        cx: &mut Context,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<(usize, SocketAddr)>> {
-        let completion = ready!(Pin::new(&mut *self).poll(cx));
-        let n = completion.result? as usize;
-        let mut action = completion.action;
-        unsafe { action.buf.set_len(n) };
-        buf[..n].copy_from_slice(&action.buf[..n]);
-        let socket_addr = action
+impl Completable for RecvMsg {
+    type Output = io::Result<(Vec<u8>, SocketAddr)>;
+
+    fn complete(mut self, cqe: CqeResult) -> Self::Output {
+        let n = cqe.result?;
+        unsafe { self.buf.set_len(n as usize) };
+        let socket_addr = self
             .socket_addr
             .as_socket()
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))?;
-        Poll::Ready(Ok((n, socket_addr)))
+            .ok_or(io::ErrorKind::InvalidInput)?;
+        Ok((self.buf, socket_addr))
     }
 }

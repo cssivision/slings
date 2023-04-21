@@ -1,12 +1,9 @@
-use std::future::Future;
 use std::io;
 use std::os::unix::io::RawFd;
-use std::pin::Pin;
-use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::Action;
+use crate::driver::{Action, Completable, CqeResult};
 
 pub(crate) struct Read {
     buf: Vec<u8>,
@@ -19,12 +16,14 @@ impl Action<Read> {
         let entry = opcode::Read::new(types::Fd(fd), read.buf.as_mut_ptr(), len).build();
         Action::submit(read, entry)
     }
+}
 
-    pub(crate) fn poll_read(&mut self, cx: &mut Context) -> Poll<io::Result<Vec<u8>>> {
-        let completion = ready!(Pin::new(&mut *self).poll(cx));
-        let n = completion.result?;
-        let mut action = completion.action;
-        unsafe { action.buf.set_len(n as usize) };
-        Poll::Ready(Ok(action.buf))
+impl Completable for Read {
+    type Output = io::Result<Vec<u8>>;
+
+    fn complete(mut self, cqe: CqeResult) -> Self::Output {
+        let n = cqe.result?;
+        unsafe { self.buf.set_len(n as usize) };
+        Ok(self.buf)
     }
 }

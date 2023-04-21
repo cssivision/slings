@@ -4,9 +4,24 @@ use std::mem;
 use std::pin::Pin;
 use std::task::{Context, Poll, Waker};
 
+use io_uring::cqueue;
 use io_uring::squeue::Entry;
 
 use crate::driver::{self, Driver, State};
+
+pub(crate) trait Completable {
+    type Output;
+    /// `complete` will be called for cqe's do not have the `more` flag set
+    fn complete(self, cqe: CqeResult) -> Self::Output;
+}
+
+pub(crate) trait Updateable: Completable {
+    /// Update will be called for cqe's which have the `more` flag set.
+    /// The Op should update any internal state as required.
+    fn update(&mut self, _cqe: CqeResult) {}
+}
+
+impl<T> Updateable for T where T: Completable {}
 
 pub(crate) struct Action<T: 'static> {
     pub driver: Driver,
@@ -23,6 +38,57 @@ impl<T> Action<T> {
         let mut inner = self.driver.inner.borrow_mut();
         let state = inner.actions.get_mut(self.key).expect("invalid state key");
         *state = State::Waiting(waker);
+    }
+
+    fn poll2(&mut self, cx: &mut Context) -> Poll<T::Output>
+    where
+        T: 'static + Completable + Updateable,
+    {
+        let mut inner = self.driver.inner.borrow_mut();
+        let state = inner.actions.get_mut(self.key).expect("invalid state key");
+
+        match mem::replace(state, State::Submitted) {
+            State::Submitted => {
+                *state = State::Waiting(cx.waker().clone());
+                Poll::Pending
+            }
+            State::Waiting(waker) => {
+                if !waker.will_wake(cx.waker()) {
+                    *state = State::Waiting(cx.waker().clone());
+                } else {
+                    *state = State::Waiting(waker);
+                }
+                Poll::Pending
+            }
+            State::Completed(cqe) => {
+                inner.actions.remove(self.key);
+                Poll::Ready(self.action.take().unwrap().complete(cqe))
+            }
+            State::CompletionList(list) => {
+                let mut data = self.action.take().unwrap();
+                let mut status = None;
+                for cqe in list.into_iter() {
+                    if cqueue::more(cqe.flags) {
+                        data.update(cqe);
+                    } else {
+                        status = Some(cqe);
+                        break;
+                    }
+                }
+                match status {
+                    None => {
+                        self.action = Some(data);
+                        *state = State::Waiting(cx.waker().clone());
+                        Poll::Pending
+                    }
+                    Some(cqe) => {
+                        inner.actions.remove(self.key);
+                        Poll::Ready(data.complete(cqe))
+                    }
+                }
+            }
+            State::Ignored(..) => unreachable!(),
+        }
     }
 }
 
@@ -41,6 +107,18 @@ impl<T> Drop for Action<T> {
             State::Completed(..) => {
                 inner.actions.remove(self.key);
             }
+            State::CompletionList(list) => {
+                let more = if !list.is_empty() {
+                    io_uring::cqueue::more(list.last().unwrap().flags)
+                } else {
+                    false
+                };
+                if more {
+                    *state = State::Ignored(Box::new(self.action.take()));
+                } else {
+                    inner.actions.remove(self.key);
+                }
+            }
             State::Ignored(..) => unreachable!(),
         }
     }
@@ -48,51 +126,30 @@ impl<T> Drop for Action<T> {
 
 impl<T> Future for Action<T>
 where
-    T: Unpin,
+    T: Unpin + 'static + Completable,
 {
-    type Output = Completion<T>;
+    type Output = T::Output;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        let me = &mut *self;
-        let mut inner = me.driver.inner.borrow_mut();
-        let state = inner.actions.get_mut(me.key).expect("invalid state key");
-
-        match mem::replace(state, State::Submitted) {
-            State::Submitted => {
-                *state = State::Waiting(cx.waker().clone());
-                Poll::Pending
-            }
-            State::Waiting(waker) => {
-                if !waker.will_wake(cx.waker()) {
-                    *state = State::Waiting(cx.waker().clone());
-                } else {
-                    *state = State::Waiting(waker);
-                }
-                Poll::Pending
-            }
-            State::Ignored(..) => unreachable!(),
-            State::Completed(cqe) => {
-                inner.actions.remove(me.key);
-                me.key = usize::MAX;
-                let result = if cqe.result() >= 0 {
-                    Ok(cqe.result())
-                } else {
-                    Err(io::Error::from_raw_os_error(-cqe.result()))
-                };
-                let flags = cqe.flags();
-                Poll::Ready(Completion {
-                    action: me.action.take().expect("action can not be None"),
-                    result,
-                    flags,
-                })
-            }
-        }
+        self.as_mut().poll2(cx)
     }
 }
 
 #[allow(dead_code)]
-pub(crate) struct Completion<T> {
-    pub(crate) action: T,
-    pub(crate) result: io::Result<i32>,
+pub(crate) struct CqeResult {
+    pub(crate) result: io::Result<u32>,
     pub(crate) flags: u32,
+}
+
+impl From<cqueue::Entry> for CqeResult {
+    fn from(cqe: cqueue::Entry) -> Self {
+        let res = cqe.result();
+        let flags = cqe.flags();
+        let result = if res >= 0 {
+            Ok(res as u32)
+        } else {
+            Err(io::Error::from_raw_os_error(-res))
+        };
+        CqeResult { result, flags }
+    }
 }

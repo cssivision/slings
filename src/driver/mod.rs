@@ -22,7 +22,7 @@ mod shutdown;
 mod timeout;
 mod write;
 
-pub(crate) use action::Action;
+pub(crate) use action::{Action, Completable, CqeResult};
 pub(crate) use read::Read;
 pub(crate) use recv::Recv;
 pub(crate) use recvmsg::RecvMsg;
@@ -126,7 +126,9 @@ enum State {
     /// The submitter is waiting for the completion of the operation
     Waiting(Waker),
     /// The operation has completed.
-    Completed(cqueue::Entry),
+    Completed(CqeResult),
+    /// The operations list.
+    CompletionList(Vec<CqeResult>),
     /// Ignored
     Ignored(Box<dyn Any>),
 }
@@ -134,17 +136,31 @@ enum State {
 impl State {
     fn complete(&mut self, cqe: cqueue::Entry) -> bool {
         match mem::replace(self, State::Submitted) {
-            State::Submitted => {
-                *self = State::Completed(cqe);
+            s @ State::Submitted | s @ State::Waiting(..) => {
+                if io_uring::cqueue::more(cqe.flags()) {
+                    *self = State::CompletionList(vec![cqe.into()]);
+                } else {
+                    *self = State::Completed(cqe.into());
+                }
+                if let State::Waiting(waker) = s {
+                    waker.wake();
+                }
                 false
             }
-            State::Waiting(waker) => {
-                *self = State::Completed(cqe);
-                waker.wake();
+            s @ State::Ignored(..) => {
+                if io_uring::cqueue::more(cqe.flags()) {
+                    *self = s;
+                    false
+                } else {
+                    true
+                }
+            }
+            State::CompletionList(mut list) => {
+                list.push(cqe.into());
+                *self = State::CompletionList(list);
                 false
             }
-            State::Ignored(..) => true,
-            State::Completed(..) => unreachable!("invalid operation state"),
+            State::Completed(..) => unreachable!("invalid state"),
         }
     }
 }

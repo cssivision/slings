@@ -1,21 +1,18 @@
-use std::future::Future;
 use std::io::{self, IoSliceMut};
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
-use std::pin::Pin;
-use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::Action;
+use crate::driver::{Action, Completable, CqeResult};
 
 #[allow(dead_code)]
 pub(crate) struct SendMsg {
-    pub(crate) socket_addr: Box<SockAddr>,
-    pub(crate) buf: Vec<u8>,
+    socket_addr: Box<SockAddr>,
+    buf: Vec<u8>,
     io_slices: Vec<IoSliceMut<'static>>,
-    pub(crate) msghdr: Box<libc::msghdr>,
+    msghdr: Box<libc::msghdr>,
 }
 
 impl Action<SendMsg> {
@@ -44,10 +41,13 @@ impl Action<SendMsg> {
         let entry = opcode::SendMsg::new(types::Fd(fd), send_msg.msghdr.as_mut() as *mut _).build();
         Action::submit(send_msg, entry)
     }
+}
 
-    pub(crate) fn poll_send_to(&mut self, cx: &mut Context) -> Poll<io::Result<usize>> {
-        let complete = ready!(Pin::new(self).poll(cx));
-        let n = complete.result? as usize;
-        Poll::Ready(Ok(n))
+impl Completable for SendMsg {
+    type Output = io::Result<usize>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        let n = cqe.result? as usize;
+        Ok(n)
     }
 }

@@ -42,10 +42,7 @@ impl Socket {
     }
 
     pub(crate) async fn connect(&self, sock_addr: SockAddr) -> io::Result<()> {
-        let action = Action::connect(self.fd, sock_addr)?;
-        let completion = action.await;
-        completion.result?;
-        Ok(())
+        Action::connect(self.fd, sock_addr)?.await
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
@@ -83,33 +80,11 @@ impl Socket {
     }
 
     pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
-        let completion = Action::accept(self.fd)?.await;
-        let fd = completion.result?;
-        let socket = Socket { fd };
-        let data = completion.action;
-        let (_, addr) = unsafe {
-            SockAddr::try_init(move |addr_storage, len| {
-                *addr_storage = data.socketaddr.0.to_owned();
-                *len = data.socketaddr.1;
-                Ok(())
-            })?
-        };
-        Ok((socket, addr.as_socket()))
+        Action::accept(self.fd)?.await
     }
 
     pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, socketaddr::SocketAddr)> {
-        let completion = Action::accept(self.fd)?.await;
-        let fd = completion.result?;
-        let socket = Socket { fd };
-        let data = completion.action;
-        let mut storage = data.socketaddr.0.to_owned();
-        let socklen = data.socketaddr.1;
-        let storage: *mut libc::sockaddr_storage = &mut storage as *mut _;
-        let sockaddr: libc::sockaddr_un = unsafe { *storage.cast() };
-        Ok((
-            socket,
-            socketaddr::SocketAddr::from_parts(sockaddr, socklen),
-        ))
+        Action::accept_unix(self.fd)?.await
     }
 
     pub(crate) fn local_addr(&self) -> io::Result<SocketAddr> {

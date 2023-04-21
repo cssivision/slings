@@ -1,11 +1,8 @@
-use std::future::Future;
 use std::io;
-use std::pin::Pin;
-use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::Action;
+use crate::driver::{Action, Completable, CqeResult};
 
 pub(crate) struct Timeout {
     spec: types::Timespec,
@@ -19,18 +16,19 @@ impl Action<Timeout> {
         let entry = opcode::Timeout::new(&timeout.spec as *const _).build();
         Action::submit(timeout, entry)
     }
+}
 
-    pub(crate) fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        let completion = ready!(Pin::new(&mut *self).poll(cx));
-        let result = completion.result;
+impl Completable for Timeout {
+    type Output = io::Result<()>;
 
-        match result {
-            Err(err) if err.raw_os_error() == Some(libc::ETIME) => Poll::Ready(Ok(())),
-            Err(err) => Poll::Ready(Err(err)),
-            Ok(n) => Poll::Ready(Err(io::Error::new(
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        match cqe.result {
+            Err(err) if err.raw_os_error() == Some(libc::ETIME) => Ok(()),
+            Err(err) => Err(err),
+            Ok(n) => Err(io::Error::new(
                 io::ErrorKind::TimedOut,
                 format!("result {}", n),
-            ))),
+            )),
         }
     }
 }

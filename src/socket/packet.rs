@@ -1,4 +1,5 @@
 use std::cell::RefCell;
+use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
@@ -74,7 +75,7 @@ impl Inner {
                     self.send = Send::Sending(action);
                 }
                 Send::Sending(action) => {
-                    let n = ready!(Pin::new(action).poll_send(cx))?;
+                    let n = ready!(Pin::new(action).poll(cx))?;
                     self.send = Send::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -96,7 +97,7 @@ impl Inner {
                     self.send_to = SendMsg::Sending(action);
                 }
                 SendMsg::Sending(action) => {
-                    let n = ready!(Pin::new(action).poll_send_to(cx))?;
+                    let n = ready!(Pin::new(action).poll(cx))?;
                     self.send_to = SendMsg::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -117,7 +118,9 @@ impl Inner {
                     self.recv = Recv::Recving(action);
                 }
                 Recv::Recving(action) => {
-                    let n = ready!(Pin::new(action).poll_recv(cx, buf))?;
+                    let buf1 = ready!(Pin::new(action).poll(cx))?;
+                    let n = buf1.len();
+                    buf[..n].copy_from_slice(&buf1[..n]);
                     self.recv = Recv::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -138,9 +141,11 @@ impl Inner {
                     self.recv_from = RecvMsg::Recving(action);
                 }
                 RecvMsg::Recving(action) => {
-                    let res = ready!(Pin::new(action).poll_recv_from(cx, buf))?;
+                    let (buf1, addr) = ready!(Pin::new(action).poll(cx))?;
+                    let n = buf1.len();
+                    buf[..n].copy_from_slice(&buf1[..n]);
                     self.recv_from = RecvMsg::Idle;
-                    return Poll::Ready(Ok(res));
+                    return Poll::Ready(Ok((n, addr)));
                 }
             }
         }

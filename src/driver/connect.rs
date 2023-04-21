@@ -4,7 +4,7 @@ use std::os::unix::io::RawFd;
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::Action;
+use crate::driver::{Action, Completable, CqeResult};
 
 pub(crate) struct Connect {
     sock_addr: SockAddr,
@@ -20,5 +20,14 @@ impl Action<Connect> {
         )
         .build();
         Action::submit(connect, entry)
+    }
+}
+
+impl Completable for Connect {
+    type Output = io::Result<()>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        cqe.result?;
+        Ok(())
     }
 }

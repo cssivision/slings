@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::io;
 use std::net;
 use std::os::unix::io::RawFd;
@@ -108,7 +109,7 @@ impl Inner {
                     self.shutdown = Shutdown::Shutdowning(action);
                 }
                 Shutdown::Shutdowning(action) => {
-                    ready!(Pin::new(action).poll_shutdown(cx))?;
+                    ready!(Pin::new(action).poll(cx))?;
                     self.shutdown = Shutdown::Done;
                 }
                 Shutdown::Done => {
@@ -126,7 +127,7 @@ impl Inner {
                     self.write = Write::Writing(action);
                 }
                 Write::Writing(action) => {
-                    let n = ready!(Pin::new(action).poll_write(cx))?;
+                    let n = ready!(Pin::new(action).poll(cx))?;
                     self.write = Write::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -148,7 +149,7 @@ impl Inner {
                     self.read = Read::Reading(action);
                 }
                 Read::Reading(action) => {
-                    self.rd = ready!(Pin::new(action).poll_read(cx))?;
+                    self.rd = ready!(Pin::new(action).poll(cx))?;
                     self.read = Read::Idle;
                     self.read_pos = 0;
                     if self.rd.is_empty() {

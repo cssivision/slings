@@ -1,3 +1,4 @@
+use std::future::Future;
 use std::io;
 use std::ops::Sub;
 use std::pin::Pin;
@@ -77,7 +78,7 @@ impl Timer {
                         }
                         _ => {}
                     }
-                    ready!(Pin::new(action).poll_timeout(cx))?;
+                    ready!(Pin::new(action).poll(cx))?;
                     self.state = State::Done;
                 }
                 State::Done => {

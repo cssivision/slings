@@ -1,14 +1,10 @@
-use std::future::Future;
 use std::io;
 use std::os::unix::io::RawFd;
-use std::pin::Pin;
-use std::task::{ready, Context, Poll};
 
 use io_uring::{opcode, types};
 
-use crate::driver::Action;
+use crate::driver::{Action, Completable, CqeResult};
 
-#[allow(dead_code)]
 pub(crate) struct Shutdown;
 
 impl Action<Shutdown> {
@@ -17,10 +13,13 @@ impl Action<Shutdown> {
         let entry = opcode::Shutdown::new(types::Fd(fd), how).build();
         Action::submit(shutdown, entry)
     }
+}
 
-    pub(crate) fn poll_shutdown(&mut self, cx: &mut Context) -> Poll<io::Result<()>> {
-        let complete = ready!(Pin::new(self).poll(cx));
-        complete.result?;
-        Poll::Ready(Ok(()))
+impl Completable for Shutdown {
+    type Output = io::Result<usize>;
+
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        let n = cqe.result? as usize;
+        Ok(n)
     }
 }
