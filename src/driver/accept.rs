@@ -3,6 +3,7 @@ use std::mem;
 use std::net::SocketAddr;
 use std::os::unix::io::RawFd;
 
+use io_uring::squeue::Entry;
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
@@ -15,17 +16,7 @@ pub struct Accept {
 
 impl Action<Accept> {
     pub(crate) fn accept(fd: RawFd) -> io::Result<Action<Accept>> {
-        let mut socketaddr = Box::new((
-            unsafe { mem::zeroed() },
-            mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t,
-        ));
-        let entry = opcode::Accept::new(
-            types::Fd(fd),
-            &mut socketaddr.0 as *mut _ as *mut _,
-            &mut socketaddr.1,
-        )
-        .flags(libc::SOCK_CLOEXEC)
-        .build();
+        let (socketaddr, entry) = accept(fd);
         Action::submit(Accept { socketaddr }, entry)
     }
 }
@@ -47,23 +38,28 @@ impl Completable for Accept {
     }
 }
 
+fn accept(fd: RawFd) -> (Box<(libc::sockaddr_storage, libc::socklen_t)>, Entry) {
+    let mut socketaddr = Box::new((
+        unsafe { mem::zeroed() },
+        mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t,
+    ));
+    let entry = opcode::Accept::new(
+        types::Fd(fd),
+        &mut socketaddr.0 as *mut _ as *mut _,
+        &mut socketaddr.1,
+    )
+    .flags(libc::SOCK_CLOEXEC)
+    .build();
+    (socketaddr, entry)
+}
+
 pub struct AcceptUnix {
     pub(crate) socketaddr: Box<(libc::sockaddr_storage, libc::socklen_t)>,
 }
 
 impl Action<AcceptUnix> {
     pub(crate) fn accept_unix(fd: RawFd) -> io::Result<Action<AcceptUnix>> {
-        let mut socketaddr = Box::new((
-            unsafe { mem::zeroed() },
-            mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t,
-        ));
-        let entry = opcode::Accept::new(
-            types::Fd(fd),
-            &mut socketaddr.0 as *mut _ as *mut _,
-            &mut socketaddr.1,
-        )
-        .flags(libc::SOCK_CLOEXEC)
-        .build();
+        let (socketaddr, entry) = accept(fd);
         Action::submit(AcceptUnix { socketaddr }, entry)
     }
 }
