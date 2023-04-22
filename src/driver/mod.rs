@@ -1,6 +1,5 @@
 use std::any::Any;
 use std::cell::RefCell;
-use std::io;
 use std::mem;
 use std::rc::Rc;
 use std::task::Waker;
@@ -10,27 +9,11 @@ use io_uring::{cqueue, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
-mod accept;
 mod action;
-mod connect;
-mod read;
-mod recv;
-mod recvmsg;
-mod send;
-mod sendmsg;
-mod shutdown;
-mod timeout;
-mod write;
+mod op;
 
 pub(crate) use action::{Action, Completable, CqeResult};
-pub(crate) use read::Read;
-pub(crate) use recv::Recv;
-pub(crate) use recvmsg::RecvMsg;
-pub(crate) use send::Send;
-pub(crate) use sendmsg::SendMsg;
-pub(crate) use shutdown::Shutdown;
-pub(crate) use timeout::Timeout;
-pub(crate) use write::Write;
+pub(crate) use op::*;
 
 scoped_thread_local!(static CURRENT: Driver);
 
@@ -52,7 +35,7 @@ struct Inner {
 }
 
 impl Driver {
-    pub(crate) fn new() -> io::Result<Driver> {
+    pub(crate) fn new() -> std::io::Result<Driver> {
         let ring = IoUring::new(256)?;
         let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
@@ -63,7 +46,7 @@ impl Driver {
         Ok(driver)
     }
 
-    pub(crate) fn wait(&self) -> io::Result<()> {
+    pub(crate) fn wait(&self) -> std::io::Result<()> {
         let inner = &mut *self.inner.borrow_mut();
         let ring = &mut inner.ring;
 
@@ -71,7 +54,7 @@ impl Driver {
             if e.raw_os_error() == Some(libc::EBUSY) {
                 return Ok(());
             }
-            if e.kind() == io::ErrorKind::Interrupted {
+            if e.kind() == std::io::ErrorKind::Interrupted {
                 return Ok(());
             }
             return Err(e);
@@ -96,7 +79,7 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
-    pub(crate) fn submit<T>(&self, action: T, sqe: Entry) -> io::Result<Action<T>> {
+    pub(crate) fn submit<T>(&self, action: T, sqe: Entry) -> std::io::Result<Action<T>> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let key = inner.actions.insert(State::Submitted);
