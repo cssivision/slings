@@ -36,9 +36,12 @@ impl Delay {
 impl Future for Delay {
     type Output = ();
 
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         match self.inner.poll_timeout(cx) {
-            Poll::Ready(_) => Poll::Ready(()),
+            Poll::Ready(v) => match v {
+                Ok(_) => Poll::Ready(()),
+                Err(e) => panic!("timer err: {}", e),
+            },
             Poll::Pending => Poll::Pending,
         }
     }
