@@ -108,20 +108,14 @@ impl AcceptMulti {
                         let fd = res.result? as i32;
                         let socket = unsafe { Socket::from_raw_fd(fd) };
                         let socket_addr = socket.peer_addr()?;
-                        return Poll::Ready(Some(Ok((
-                            unsafe { Socket::from_raw_fd(fd) },
-                            socket_addr,
-                        ))));
+                        return Poll::Ready(Some(Ok((socket, socket_addr))));
                     }
                     let res = ready!(Pin::new(action).poll(cx));
                     let fd = res.result? as i32;
                     let socket = unsafe { Socket::from_raw_fd(fd) };
                     let socket_addr = socket.peer_addr()?;
                     self.state = AcceptMultiState::Done;
-                    return Poll::Ready(Some(Ok((
-                        unsafe { Socket::from_raw_fd(fd) },
-                        socket_addr,
-                    ))));
+                    return Poll::Ready(Some(Ok((socket, socket_addr))));
                 }
                 AcceptMultiState::Done => {
                     return Poll::Ready(None);

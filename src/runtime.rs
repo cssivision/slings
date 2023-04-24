@@ -1,3 +1,4 @@
+use std::cell::Cell;
 use std::future::Future;
 use std::io;
 use std::pin::pin;
@@ -22,8 +23,11 @@ impl Runtime {
     where
         F: Future,
     {
+        thread_local! {
+            static NOTIFIED: Cell<bool> = Cell::new(false);
+        }
         let mut future = pin!(future);
-        let waker = waker_fn(|| {});
+        let waker = waker_fn(|| NOTIFIED.with(|notified| notified.set(true)));
         let cx = &mut Context::from_waker(&waker);
 
         self.driver.with(|| loop {
@@ -33,7 +37,10 @@ impl Runtime {
             if local_executor::tick() {
                 continue;
             }
-            self.driver.wait().expect("driver wait error");
+            if !NOTIFIED.with(Cell::get) {
+                self.driver.wait().expect("driver wait error");
+            }
+            NOTIFIED.with(|notified| notified.set(false));
         })
     }
 }
