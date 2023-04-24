@@ -13,15 +13,10 @@ pub(crate) trait Completable {
     type Output;
     /// `complete` will be called for cqe's do not have the `more` flag set
     fn complete(self, cqe: CqeResult) -> Self::Output;
-}
-
-pub(crate) trait Updateable: Completable {
     /// Update will be called for cqe's which have the `more` flag set.
     /// The Op should update any internal state as required.
     fn update(&mut self, _cqe: CqeResult) {}
 }
-
-impl<T> Updateable for T where T: Completable {}
 
 pub(crate) struct Action<T: 'static> {
     pub driver: Driver,
@@ -30,6 +25,10 @@ pub(crate) struct Action<T: 'static> {
 }
 
 impl<T> Action<T> {
+    pub(crate) fn get_mut(&mut self) -> &mut T {
+        self.action.as_mut().unwrap()
+    }
+
     pub(crate) fn submit(action: T, entry: Entry) -> io::Result<Action<T>> {
         driver::CURRENT.with(|driver| driver.submit(action, entry))
     }
@@ -42,7 +41,7 @@ impl<T> Action<T> {
 
     fn poll2(&mut self, cx: &mut Context) -> Poll<T::Output>
     where
-        T: 'static + Completable + Updateable,
+        T: 'static + Completable,
     {
         let mut inner = self.driver.inner.borrow_mut();
         let state = inner.actions.get_mut(self.key).expect("invalid state key");
@@ -65,27 +64,31 @@ impl<T> Action<T> {
                 Poll::Ready(self.action.take().unwrap().complete(cqe))
             }
             State::CompletionList(list) => {
-                let mut data = self.action.take().unwrap();
+                let data = self.action.as_mut().unwrap();
                 let mut status = None;
+                let mut updated = false;
                 for cqe in list.into_iter() {
                     if cqueue::more(cqe.flags) {
+                        updated = true;
                         data.update(cqe);
                     } else {
                         status = Some(cqe);
                         break;
                     }
                 }
+                if updated {
+                    // because we update internal state, wake and rerun the task.
+                    cx.waker().wake_by_ref();
+                }
                 match status {
                     None => {
-                        self.action = Some(data);
                         *state = State::Waiting(cx.waker().clone());
-                        Poll::Pending
                     }
                     Some(cqe) => {
-                        inner.actions.remove(self.key);
-                        Poll::Ready(data.complete(cqe))
+                        *state = State::Completed(cqe);
                     }
                 }
+                Poll::Pending
             }
             State::Ignored(..) => unreachable!(),
         }

@@ -10,7 +10,7 @@ use socket2::SockAddr;
 use crate::driver::{Action, Completable, CqeResult};
 use crate::socket::{socketaddr, Socket};
 
-pub struct Accept {
+pub(crate) struct Accept {
     pub(crate) socketaddr: Box<(libc::sockaddr_storage, libc::socklen_t)>,
 }
 

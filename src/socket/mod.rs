@@ -1,7 +1,9 @@
+pub(crate) mod listener;
 pub(crate) mod packet;
 pub(crate) mod socketaddr;
 pub(crate) mod stream;
 
+pub(crate) use listener::{AcceptMulti, Listener};
 pub(crate) use packet::Packet;
 pub(crate) use stream::Stream;
 
@@ -79,10 +81,6 @@ impl Socket {
         Ok(())
     }
 
-    pub(crate) async fn accept(&self) -> io::Result<(Socket, Option<SocketAddr>)> {
-        Action::accept(self.fd)?.await
-    }
-
     pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, socketaddr::SocketAddr)> {
         Action::accept_unix(self.fd)?.await
     }
@@ -122,7 +120,7 @@ fn setsockopt<T>(
     Ok(())
 }
 
-fn sockname<F>(f: F) -> io::Result<SocketAddr>
+pub(crate) fn sockname<F>(f: F) -> io::Result<SocketAddr>
 where
     F: FnOnce(*mut libc::sockaddr, *mut libc::socklen_t) -> io::Result<libc::c_int>,
 {
@@ -137,7 +135,7 @@ where
         })?
     };
     addr.as_socket()
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid argument"))
+        .ok_or_else(|| io::ErrorKind::InvalidInput.into())
 }
 
 impl Drop for Socket {

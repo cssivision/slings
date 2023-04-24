@@ -1,4 +1,5 @@
 mod accept;
+mod accept_multi;
 mod connect;
 mod read;
 mod recv;
@@ -9,6 +10,8 @@ mod shutdown;
 mod timeout;
 mod write;
 
+pub(crate) use accept::Accept;
+pub(crate) use accept_multi::AcceptMulti;
 pub(crate) use read::Read;
 pub(crate) use recv::Recv;
 pub(crate) use recvmsg::RecvMsg;
