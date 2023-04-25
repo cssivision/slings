@@ -81,10 +81,6 @@ impl Socket {
         Ok(())
     }
 
-    pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, socketaddr::SocketAddr)> {
-        Action::accept_unix(self.fd)?.await
-    }
-
     pub(crate) fn local_addr(&self) -> io::Result<SocketAddr> {
         sockname(|buf, len| syscall!(getsockname(self.as_raw_fd(), buf, len)))
     }

@@ -18,7 +18,6 @@ futures-io = "0.3"
 futures-core = "0.3"
 pin-project-lite = "0.2"
 socket2 = { version = "0.5", features = ["all"] }
-async-stream = "0.3.5"
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["io"] }

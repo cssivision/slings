@@ -49,7 +49,7 @@ impl TcpListener {
         Ok((socket.into(), socket_addr))
     }
 
-    pub fn accept_multi(&self) -> AcceptMulti {
+    pub fn accept_multi(&self) -> impl Stream<Item = io::Result<(TcpStream, SocketAddr)>> {
         AcceptMulti {
             inner: self.inner.accept_multi(),
         }
@@ -65,7 +65,7 @@ impl TcpListener {
     }
 }
 
-pub struct AcceptMulti {
+struct AcceptMulti {
     inner: socket::AcceptMulti,
 }
 

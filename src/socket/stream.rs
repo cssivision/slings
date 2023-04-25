@@ -22,9 +22,9 @@ impl Stream {
             inner: Inner {
                 read_pos: 0,
                 rd: vec![],
-                read: Read::Idle,
-                write: Write::Idle,
-                shutdown: Shutdown::Idle,
+                read: ReadState::Idle,
+                write: WriteState::Idle,
+                shutdown: ShutdownState::Idle,
             },
         }
     }
@@ -74,22 +74,22 @@ impl Stream {
 struct Inner {
     rd: Vec<u8>,
     read_pos: usize,
-    read: Read,
-    write: Write,
-    shutdown: Shutdown,
+    read: ReadState,
+    write: WriteState,
+    shutdown: ShutdownState,
 }
 
-enum Write {
+enum WriteState {
     Idle,
     Writing(Action<driver::Write>),
 }
 
-enum Read {
+enum ReadState {
     Idle,
     Reading(Action<driver::Read>),
 }
 
-enum Shutdown {
+enum ShutdownState {
     Idle,
     Shutdowning(Action<driver::Shutdown>),
     Done,
@@ -104,15 +104,15 @@ impl Inner {
     ) -> Poll<io::Result<()>> {
         loop {
             match &mut self.shutdown {
-                Shutdown::Idle => {
+                ShutdownState::Idle => {
                     let action = Action::shutdown(fd, how)?;
-                    self.shutdown = Shutdown::Shutdowning(action);
+                    self.shutdown = ShutdownState::Shutdowning(action);
                 }
-                Shutdown::Shutdowning(action) => {
+                ShutdownState::Shutdowning(action) => {
                     ready!(Pin::new(action).poll(cx))?;
-                    self.shutdown = Shutdown::Done;
+                    self.shutdown = ShutdownState::Done;
                 }
-                Shutdown::Done => {
+                ShutdownState::Done => {
                     return Poll::Ready(Ok(()));
                 }
             }
@@ -122,13 +122,13 @@ impl Inner {
     fn poll_write(&mut self, cx: &mut Context, buf: &[u8], fd: RawFd) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.write {
-                Write::Idle => {
+                WriteState::Idle => {
                     let action = Action::write(fd, buf)?;
-                    self.write = Write::Writing(action);
+                    self.write = WriteState::Writing(action);
                 }
-                Write::Writing(action) => {
+                WriteState::Writing(action) => {
                     let n = ready!(Pin::new(action).poll(cx))?;
-                    self.write = Write::Idle;
+                    self.write = WriteState::Idle;
                     return Poll::Ready(Ok(n));
                 }
             }
@@ -138,19 +138,18 @@ impl Inner {
     fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
         loop {
             match &mut self.read {
-                Read::Idle => {
+                ReadState::Idle => {
                     if !self.rd[self.read_pos..].is_empty() {
                         return Poll::Ready(Ok(&self.rd[self.read_pos..]));
                     }
-
                     self.read_pos = 0;
                     self.rd = vec![];
                     let action = Action::read(fd, DEFAULT_BUFFER_SIZE as u32)?;
-                    self.read = Read::Reading(action);
+                    self.read = ReadState::Reading(action);
                 }
-                Read::Reading(action) => {
+                ReadState::Reading(action) => {
                     self.rd = ready!(Pin::new(action).poll(cx))?;
-                    self.read = Read::Idle;
+                    self.read = ReadState::Idle;
                     self.read_pos = 0;
                     if self.rd.is_empty() {
                         return Poll::Ready(Ok(&self.rd[..]));

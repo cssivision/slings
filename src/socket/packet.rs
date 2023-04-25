@@ -19,10 +19,10 @@ impl Packet {
         Packet {
             io,
             inner: RefCell::new(Inner {
-                recv: Recv::Idle,
-                recv_from: RecvMsg::Idle,
-                send: Send::Idle,
-                send_to: SendMsg::Idle,
+                recv: RecvState::Idle,
+                recv_from: RecvMsgState::Idle,
+                send: SendState::Idle,
+                send_to: SendMsgState::Idle,
             }),
         }
     }
@@ -60,23 +60,23 @@ impl Packet {
 }
 
 struct Inner {
-    recv: Recv,
-    recv_from: RecvMsg,
-    send: Send,
-    send_to: SendMsg,
+    recv: RecvState,
+    recv_from: RecvMsgState,
+    send: SendState,
+    send_to: SendMsgState,
 }
 
 impl Inner {
     fn poll_send(&mut self, cx: &mut Context, buf: &[u8], fd: RawFd) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.send {
-                Send::Idle => {
+                SendState::Idle => {
                     let action = Action::send(fd, buf)?;
-                    self.send = Send::Sending(action);
+                    self.send = SendState::Sending(action);
                 }
-                Send::Sending(action) => {
+                SendState::Sending(action) => {
                     let n = ready!(Pin::new(action).poll(cx))?;
-                    self.send = Send::Idle;
+                    self.send = SendState::Idle;
                     return Poll::Ready(Ok(n));
                 }
             }
@@ -92,13 +92,13 @@ impl Inner {
     ) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.send_to {
-                SendMsg::Idle => {
+                SendMsgState::Idle => {
                     let action = Action::sendmsg(fd, buf, addr)?;
-                    self.send_to = SendMsg::Sending(action);
+                    self.send_to = SendMsgState::Sending(action);
                 }
-                SendMsg::Sending(action) => {
+                SendMsgState::Sending(action) => {
                     let n = ready!(Pin::new(action).poll(cx))?;
-                    self.send_to = SendMsg::Idle;
+                    self.send_to = SendMsgState::Idle;
                     return Poll::Ready(Ok(n));
                 }
             }
@@ -113,15 +113,15 @@ impl Inner {
     ) -> Poll<io::Result<usize>> {
         loop {
             match &mut self.recv {
-                Recv::Idle => {
+                RecvState::Idle => {
                     let action = Action::recv(fd, buf.len())?;
-                    self.recv = Recv::Recving(action);
+                    self.recv = RecvState::Recving(action);
                 }
-                Recv::Recving(action) => {
+                RecvState::Recving(action) => {
                     let buf1 = ready!(Pin::new(action).poll(cx))?;
                     let n = buf1.len();
                     buf[..n].copy_from_slice(&buf1[..n]);
-                    self.recv = Recv::Idle;
+                    self.recv = RecvState::Idle;
                     return Poll::Ready(Ok(n));
                 }
             }
@@ -136,15 +136,15 @@ impl Inner {
     ) -> Poll<io::Result<(usize, SocketAddr)>> {
         loop {
             match &mut self.recv_from {
-                RecvMsg::Idle => {
+                RecvMsgState::Idle => {
                     let action = Action::recvmsg(fd, buf.len())?;
-                    self.recv_from = RecvMsg::Recving(action);
+                    self.recv_from = RecvMsgState::Recving(action);
                 }
-                RecvMsg::Recving(action) => {
+                RecvMsgState::Recving(action) => {
                     let (buf1, addr) = ready!(Pin::new(action).poll(cx))?;
                     let n = buf1.len();
                     buf[..n].copy_from_slice(&buf1[..n]);
-                    self.recv_from = RecvMsg::Idle;
+                    self.recv_from = RecvMsgState::Idle;
                     return Poll::Ready(Ok((n, addr)));
                 }
             }
@@ -152,22 +152,22 @@ impl Inner {
     }
 }
 
-enum Send {
+enum SendState {
     Idle,
     Sending(Action<driver::Send>),
 }
 
-enum SendMsg {
+enum SendMsgState {
     Idle,
     Sending(Action<driver::SendMsg>),
 }
 
-enum Recv {
+enum RecvState {
     Idle,
     Recving(Action<driver::Recv>),
 }
 
-enum RecvMsg {
+enum RecvMsgState {
     Idle,
     Recving(Action<driver::RecvMsg>),
 }

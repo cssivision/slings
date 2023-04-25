@@ -4,10 +4,10 @@ use std::os::unix::net;
 use std::path::Path;
 
 use super::UnixStream;
-use crate::socket::{socketaddr::SocketAddr, Socket};
+use crate::socket::{self, socketaddr::SocketAddr};
 
 pub struct UnixListener {
-    inner: Socket,
+    inner: socket::Listener,
 }
 
 impl UnixListener {
@@ -15,9 +15,9 @@ impl UnixListener {
     where
         P: AsRef<Path>,
     {
-        let socket = Socket::bind_unix(path, libc::SOCK_STREAM)?;
-        socket.listen(1024)?;
-        Ok(UnixListener { inner: socket })
+        Ok(UnixListener {
+            inner: socket::Listener::bind_unix(path)?,
+        })
     }
 
     pub async fn accept(&self) -> io::Result<(UnixStream, SocketAddr)> {
@@ -27,8 +27,9 @@ impl UnixListener {
     }
 
     pub fn from_std(listener: net::UnixListener) -> io::Result<UnixListener> {
-        let socket = unsafe { Socket::from_raw_fd(listener.into_raw_fd()) };
-        Ok(UnixListener { inner: socket })
+        Ok(UnixListener {
+            inner: unsafe { socket::Listener::from_raw_fd(listener.into_raw_fd()) },
+        })
     }
 
     pub fn local_addr(&self) -> io::Result<SocketAddr> {

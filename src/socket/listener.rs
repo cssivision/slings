@@ -3,6 +3,7 @@ use std::future::{poll_fn, Future};
 use std::io;
 use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
+use std::path::Path;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
@@ -10,10 +11,17 @@ use futures_core::stream::Stream;
 
 use super::Socket;
 use crate::driver::{self, Action};
+use crate::socket::socketaddr;
 
 pub(crate) struct Listener {
     inner: RefCell<Inner>,
     io: Socket,
+}
+
+impl AsRawFd for Listener {
+    fn as_raw_fd(&self) -> RawFd {
+        self.io.as_raw_fd()
+    }
 }
 
 impl Listener {
@@ -22,6 +30,7 @@ impl Listener {
             io,
             inner: RefCell::new(Inner {
                 accept: AcceptState::Idle,
+                accept_unix: AcceptUnixState::Idle,
             }),
         }
     }
@@ -32,8 +41,26 @@ impl Listener {
         Ok(Listener::new(socket))
     }
 
+    pub(crate) fn bind_unix<P>(path: P) -> io::Result<Listener>
+    where
+        P: AsRef<Path>,
+    {
+        let socket = Socket::bind_unix(path, libc::SOCK_STREAM)?;
+        socket.listen(1024)?;
+        Ok(Listener::new(socket))
+    }
+
     pub(crate) async fn accept(&self) -> io::Result<(Socket, SocketAddr)> {
         poll_fn(|cx| self.inner.borrow_mut().poll_accept(cx, self.io.as_raw_fd())).await
+    }
+
+    pub(crate) async fn accept_unix(&self) -> io::Result<(Socket, socketaddr::SocketAddr)> {
+        poll_fn(|cx| {
+            self.inner
+                .borrow_mut()
+                .poll_accept_unix(cx, self.io.as_raw_fd())
+        })
+        .await
     }
 
     pub(crate) fn accept_multi(&self) -> AcceptMulti {
@@ -83,6 +110,25 @@ impl Inner {
             }
         }
     }
+
+    pub fn poll_accept_unix(
+        &mut self,
+        cx: &mut Context<'_>,
+        fd: RawFd,
+    ) -> Poll<io::Result<(Socket, socketaddr::SocketAddr)>> {
+        loop {
+            match &mut self.accept_unix {
+                AcceptUnixState::Idle => {
+                    self.accept_unix = AcceptUnixState::Accepting(Action::accept_unix(fd)?);
+                }
+                AcceptUnixState::Accepting(action) => {
+                    let (socket, socket_addr) = ready!(Pin::new(action).poll(cx))?;
+                    self.accept = AcceptState::Idle;
+                    return Poll::Ready(Ok((socket, socket_addr)));
+                }
+            }
+        }
+    }
 }
 
 impl Stream for AcceptMulti {
@@ -105,14 +151,12 @@ impl AcceptMulti {
                 }
                 AcceptMultiState::Accepting(action) => {
                     if let Some(res) = action.get_mut().next() {
-                        let fd = res.result? as i32;
-                        let socket = unsafe { Socket::from_raw_fd(fd) };
+                        let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
                         let socket_addr = socket.peer_addr()?;
                         return Poll::Ready(Some(Ok((socket, socket_addr))));
                     }
                     let res = ready!(Pin::new(action).poll(cx));
-                    let fd = res.result? as i32;
-                    let socket = unsafe { Socket::from_raw_fd(fd) };
+                    let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
                     let socket_addr = socket.peer_addr()?;
                     self.state = AcceptMultiState::Done;
                     return Poll::Ready(Some(Ok((socket, socket_addr))));
@@ -127,6 +171,12 @@ impl AcceptMulti {
 
 struct Inner {
     accept: AcceptState,
+    accept_unix: AcceptUnixState,
+}
+
+enum AcceptUnixState {
+    Idle,
+    Accepting(Action<driver::AcceptUnix>),
 }
 
 enum AcceptState {

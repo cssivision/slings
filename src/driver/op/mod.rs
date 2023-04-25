@@ -10,7 +10,7 @@ mod shutdown;
 mod timeout;
 mod write;
 
-pub(crate) use accept::Accept;
+pub(crate) use accept::{Accept, AcceptUnix};
 pub(crate) use accept_multi::AcceptMulti;
 pub(crate) use read::Read;
 pub(crate) use recv::Recv;
