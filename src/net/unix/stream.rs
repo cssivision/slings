@@ -1,5 +1,5 @@
 use std::io;
-use std::os::unix::io::{AsRawFd, FromRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net;
 use std::path::Path;
 use std::pin::Pin;
@@ -44,14 +44,6 @@ impl UnixStream {
     }
 }
 
-impl From<Socket> for UnixStream {
-    fn from(socket: Socket) -> Self {
-        UnixStream {
-            inner: socket::Stream::new(socket),
-        }
-    }
-}
-
 impl AsyncRead for UnixStream {
     fn poll_read(
         self: Pin<&mut Self>,
@@ -85,5 +77,28 @@ impl AsyncWrite for UnixStream {
         self.get_mut()
             .inner
             .poll_shutdown(cx, std::net::Shutdown::Write)
+    }
+}
+
+impl From<Socket> for UnixStream {
+    fn from(socket: Socket) -> Self {
+        UnixStream {
+            inner: socket::Stream::new(socket),
+        }
+    }
+}
+
+impl AsRawFd for UnixStream {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.get_ref().as_raw_fd()
+    }
+}
+
+impl FromRawFd for UnixStream {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        let socket = Socket::from_raw_fd(fd);
+        UnixStream {
+            inner: socket::Stream::new(socket),
+        }
     }
 }

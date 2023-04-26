@@ -1,13 +1,15 @@
+use std::future::poll_fn;
 use std::io;
 use std::net::{self, SocketAddr, ToSocketAddrs};
-use std::os::unix::io::{FromRawFd, IntoRawFd};
+use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use futures_core::stream::Stream;
+use socket2::SockAddr;
 
 use super::stream::TcpStream;
-use crate::socket;
+use crate::socket::{self, Socket};
 
 pub struct TcpListener {
     inner: socket::Listener,
@@ -45,8 +47,7 @@ impl TcpListener {
     }
 
     pub async fn accept(&self) -> io::Result<(TcpStream, SocketAddr)> {
-        let (socket, socket_addr) = self.inner.accept().await?;
-        Ok((socket.into(), socket_addr))
+        poll_fn(|cx| self.poll_accept(cx)).await
     }
 
     pub fn accept_multi(&self) -> impl Stream<Item = io::Result<(TcpStream, SocketAddr)>> {
@@ -56,7 +57,17 @@ impl TcpListener {
     }
 
     pub fn poll_accept(&self, cx: &mut Context<'_>) -> Poll<io::Result<(TcpStream, SocketAddr)>> {
-        let (socket, socket_addr) = ready!(self.inner.poll_accept(cx))?;
+        let (socket, socketaddr) = ready!(self.inner.poll_accept(cx))?;
+        let (_, addr) = unsafe {
+            SockAddr::try_init(move |addr_storage, len| {
+                *addr_storage = socketaddr.0.to_owned();
+                *len = socketaddr.1;
+                Ok(())
+            })?
+        };
+        let socket_addr = addr.as_socket().ok_or_else(|| {
+            io::Error::new(io::ErrorKind::Other, "Could not get socket IP address")
+        })?;
         Poll::Ready(Ok((socket.into(), socket_addr)))
     }
 
@@ -79,6 +90,21 @@ impl Stream for AcceptMulti {
                 Poll::Ready(Some(Ok((socket.into(), socket_addr))))
             }
             None => Poll::Ready(None),
+        }
+    }
+}
+
+impl AsRawFd for TcpListener {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.get_ref().as_raw_fd()
+    }
+}
+
+impl FromRawFd for TcpListener {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        let socket = Socket::from_raw_fd(fd);
+        TcpListener {
+            inner: socket::Listener::new(socket),
         }
     }
 }

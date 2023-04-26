@@ -13,15 +13,6 @@ pub struct TcpStream {
     inner: socket::Stream,
 }
 
-impl FromRawFd for TcpStream {
-    unsafe fn from_raw_fd(fd: RawFd) -> Self {
-        let socket = Socket::from_raw_fd(fd);
-        TcpStream {
-            inner: socket::Stream::new(socket),
-        }
-    }
-}
-
 impl TcpStream {
     pub fn from_std(stream: net::TcpStream) -> TcpStream {
         let socket = unsafe { Socket::from_raw_fd(stream.as_raw_fd()) };
@@ -106,6 +97,21 @@ impl AsyncWrite for TcpStream {
 
 impl From<Socket> for TcpStream {
     fn from(socket: Socket) -> Self {
+        TcpStream {
+            inner: socket::Stream::new(socket),
+        }
+    }
+}
+
+impl AsRawFd for TcpStream {
+    fn as_raw_fd(&self) -> RawFd {
+        self.inner.get_ref().as_raw_fd()
+    }
+}
+
+impl FromRawFd for TcpStream {
+    unsafe fn from_raw_fd(fd: RawFd) -> Self {
+        let socket = Socket::from_raw_fd(fd);
         TcpStream {
             inner: socket::Stream::new(socket),
         }
