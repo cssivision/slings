@@ -3,17 +3,17 @@ use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct Recv {
     buf: Vec<u8>,
 }
 
-impl Action<Recv> {
-    pub(crate) fn recv(fd: RawFd, len: usize) -> io::Result<Action<Recv>> {
+impl Op<Recv> {
+    pub(crate) fn recv(fd: RawFd, len: usize) -> io::Result<Op<Recv>> {
         let mut buf = Vec::with_capacity(len);
         let entry = opcode::Recv::new(types::Fd(fd), buf.as_mut_ptr(), len as u32).build();
-        Action::submit(Recv { buf }, entry)
+        Op::submit(Recv { buf }, entry)
     }
 }
 

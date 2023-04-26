@@ -2,19 +2,19 @@ use std::io;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct Timeout {
     spec: types::Timespec,
 }
 
-impl Action<Timeout> {
-    pub(crate) fn timeout(sec: u64, nsec: u32) -> io::Result<Action<Timeout>> {
+impl Op<Timeout> {
+    pub(crate) fn timeout(sec: u64, nsec: u32) -> io::Result<Op<Timeout>> {
         let timeout = Timeout {
             spec: types::Timespec::new().sec(sec).nsec(nsec),
         };
         let entry = opcode::Timeout::new(&timeout.spec as *const _).build();
-        Action::submit(timeout, entry)
+        Op::submit(timeout, entry)
     }
 }
 

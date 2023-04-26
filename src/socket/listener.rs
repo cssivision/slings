@@ -1,3 +1,4 @@
+#![allow(clippy::type_complexity)]
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
@@ -10,7 +11,7 @@ use std::task::{ready, Context, Poll};
 use futures_core::stream::Stream;
 
 use super::Socket;
-use crate::driver::{self, Action};
+use crate::driver::{self, Op};
 
 pub(crate) struct Listener {
     inner: RefCell<Inner>,
@@ -86,10 +87,10 @@ impl Inner {
         loop {
             match &mut self.accept {
                 AcceptState::Idle => {
-                    self.accept = AcceptState::Accepting(Action::accept(fd)?);
+                    self.accept = AcceptState::Accepting(Op::accept(fd)?);
                 }
-                AcceptState::Accepting(action) => {
-                    let (socket, socketaddr) = ready!(Pin::new(action).poll(cx))?;
+                AcceptState::Accepting(op) => {
+                    let (socket, socketaddr) = ready!(Pin::new(op).poll(cx))?;
                     self.accept = AcceptState::Idle;
                     return Poll::Ready(Ok((socket, socketaddr)));
                 }
@@ -114,15 +115,15 @@ impl AcceptMulti {
         loop {
             match &mut self.state {
                 AcceptMultiState::Idle => {
-                    self.state = AcceptMultiState::Accepting(Action::accept_multi(self.fd)?);
+                    self.state = AcceptMultiState::Accepting(Op::accept_multi(self.fd)?);
                 }
-                AcceptMultiState::Accepting(action) => {
-                    if let Some(res) = action.get_mut().next() {
+                AcceptMultiState::Accepting(op) => {
+                    if let Some(res) = op.get_mut().next() {
                         let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
                         let socket_addr = socket.peer_addr()?;
                         return Poll::Ready(Some(Ok((socket, socket_addr))));
                     }
-                    let res = ready!(Pin::new(action).poll(cx));
+                    let res = ready!(Pin::new(op).poll(cx));
                     let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
                     let socket_addr = socket.peer_addr()?;
                     self.state = AcceptMultiState::Done;
@@ -142,7 +143,7 @@ struct Inner {
 
 enum AcceptState {
     Idle,
-    Accepting(Action<driver::Accept>),
+    Accepting(Op<driver::Accept>),
 }
 
 pub(crate) struct AcceptMulti {
@@ -152,6 +153,6 @@ pub(crate) struct AcceptMulti {
 
 enum AcceptMultiState {
     Idle,
-    Accepting(Action<driver::AcceptMulti>),
+    Accepting(Op<driver::AcceptMulti>),
     Done,
 }

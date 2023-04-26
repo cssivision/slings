@@ -3,19 +3,19 @@ use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct Write {
     buf: Vec<u8>,
 }
 
-impl Action<Write> {
-    pub(crate) fn write(fd: RawFd, buf: &[u8]) -> io::Result<Action<Write>> {
+impl Op<Write> {
+    pub(crate) fn write(fd: RawFd, buf: &[u8]) -> io::Result<Op<Write>> {
         let buf = buf.to_vec();
         let write = Write { buf };
         let entry =
             opcode::Write::new(types::Fd(fd), write.buf.as_ptr(), write.buf.len() as u32).build();
-        Action::submit(write, entry)
+        Op::submit(write, entry)
     }
 }
 

@@ -13,7 +13,7 @@ use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
-use crate::driver::Action;
+use crate::driver::Op;
 
 use socket2::SockAddr;
 
@@ -44,7 +44,7 @@ impl Socket {
     }
 
     pub(crate) async fn connect(&self, sock_addr: SockAddr) -> io::Result<()> {
-        Action::connect(self.fd, sock_addr)?.await
+        Op::connect(self.fd, sock_addr)?.await
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {

@@ -3,15 +3,15 @@ use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct Shutdown;
 
-impl Action<Shutdown> {
-    pub(crate) fn shutdown(fd: RawFd, how: libc::c_int) -> io::Result<Action<Shutdown>> {
+impl Op<Shutdown> {
+    pub(crate) fn shutdown(fd: RawFd, how: libc::c_int) -> io::Result<Op<Shutdown>> {
         let shutdown = Shutdown;
         let entry = opcode::Shutdown::new(types::Fd(fd), how).build();
-        Action::submit(shutdown, entry)
+        Op::submit(shutdown, entry)
     }
 }
 

@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 #[allow(dead_code)]
 pub(crate) struct RecvMsg {
@@ -15,8 +15,8 @@ pub(crate) struct RecvMsg {
     msghdr: Box<libc::msghdr>,
 }
 
-impl Action<RecvMsg> {
-    pub(crate) fn recvmsg(fd: RawFd, len: usize) -> io::Result<Action<RecvMsg>> {
+impl Op<RecvMsg> {
+    pub(crate) fn recvmsg(fd: RawFd, len: usize) -> io::Result<Op<RecvMsg>> {
         let mut buf = Vec::with_capacity(len);
         let mut io_slices = vec![IoSliceMut::new(unsafe {
             std::slice::from_raw_parts_mut(buf.as_mut_ptr(), len)
@@ -34,7 +34,7 @@ impl Action<RecvMsg> {
             io_slices,
         };
         let entry = opcode::RecvMsg::new(types::Fd(fd), recv_msg.msghdr.as_mut() as *mut _).build();
-        Action::submit(recv_msg, entry)
+        Op::submit(recv_msg, entry)
     }
 }
 

@@ -5,7 +5,7 @@ use std::pin::Pin;
 use std::task::{ready, Context, Poll, Waker};
 use std::time::Instant;
 
-use crate::driver::{self, Action};
+use crate::driver::{self, Op};
 
 pub mod delay;
 pub mod interval;
@@ -17,7 +17,7 @@ pub use timeout::{timeout, timeout_at, Timeout};
 
 enum State {
     Idle,
-    Waiting(Action<driver::Timeout>),
+    Waiting(Op<driver::Timeout>),
     Done,
 }
 
@@ -49,7 +49,7 @@ impl Timer {
         self.deadline = when;
         if let Some(waker) = self.waker.as_ref() {
             let duration = self.deadline.sub(Instant::now());
-            let action = Action::timeout(duration.as_secs(), duration.subsec_nanos())
+            let action = Op::timeout(duration.as_secs(), duration.subsec_nanos())
                 .expect("fail to submit timeout sqe");
             action.insert_waker(waker.clone());
             self.state = State::Waiting(action);
@@ -65,7 +65,7 @@ impl Timer {
             match &mut self.state {
                 State::Idle => {
                     let duration = self.deadline.sub(Instant::now());
-                    let action = Action::timeout(duration.as_secs(), duration.subsec_nanos())?;
+                    let action = Op::timeout(duration.as_secs(), duration.subsec_nanos())?;
                     self.state = State::Waiting(action);
                 }
                 State::Waiting(action) => {

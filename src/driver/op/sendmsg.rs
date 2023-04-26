@@ -5,7 +5,7 @@ use std::os::unix::io::RawFd;
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 #[allow(dead_code)]
 pub(crate) struct SendMsg {
@@ -15,12 +15,12 @@ pub(crate) struct SendMsg {
     msghdr: Box<libc::msghdr>,
 }
 
-impl Action<SendMsg> {
+impl Op<SendMsg> {
     pub(crate) fn sendmsg(
         fd: RawFd,
         buf: &[u8],
         socket_addr: SocketAddr,
-    ) -> io::Result<Action<SendMsg>> {
+    ) -> io::Result<Op<SendMsg>> {
         let len = buf.len();
         let mut buf = buf.to_vec();
         let mut io_slices = vec![IoSliceMut::new(unsafe {
@@ -39,7 +39,7 @@ impl Action<SendMsg> {
             io_slices,
         };
         let entry = opcode::SendMsg::new(types::Fd(fd), send_msg.msghdr.as_mut() as *mut _).build();
-        Action::submit(send_msg, entry)
+        Op::submit(send_msg, entry)
     }
 }
 

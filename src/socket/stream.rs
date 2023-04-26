@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use super::Socket;
-use crate::driver::{self, Action};
+use crate::driver::{self, Op};
 
 const DEFAULT_BUFFER_SIZE: usize = 4096;
 
@@ -81,17 +81,17 @@ struct Inner {
 
 enum WriteState {
     Idle,
-    Writing(Action<driver::Write>),
+    Writing(Op<driver::Write>),
 }
 
 enum ReadState {
     Idle,
-    Reading(Action<driver::Read>),
+    Reading(Op<driver::Read>),
 }
 
 enum ShutdownState {
     Idle,
-    Shutdowning(Action<driver::Shutdown>),
+    Shutdowning(Op<driver::Shutdown>),
     Done,
 }
 
@@ -105,11 +105,10 @@ impl Inner {
         loop {
             match &mut self.shutdown {
                 ShutdownState::Idle => {
-                    let action = Action::shutdown(fd, how)?;
-                    self.shutdown = ShutdownState::Shutdowning(action);
+                    self.shutdown = ShutdownState::Shutdowning(Op::shutdown(fd, how)?);
                 }
-                ShutdownState::Shutdowning(action) => {
-                    ready!(Pin::new(action).poll(cx))?;
+                ShutdownState::Shutdowning(op) => {
+                    ready!(Pin::new(op).poll(cx))?;
                     self.shutdown = ShutdownState::Done;
                 }
                 ShutdownState::Done => {
@@ -123,11 +122,10 @@ impl Inner {
         loop {
             match &mut self.write {
                 WriteState::Idle => {
-                    let action = Action::write(fd, buf)?;
-                    self.write = WriteState::Writing(action);
+                    self.write = WriteState::Writing(Op::write(fd, buf)?);
                 }
-                WriteState::Writing(action) => {
-                    let n = ready!(Pin::new(action).poll(cx))?;
+                WriteState::Writing(op) => {
+                    let n = ready!(Pin::new(op).poll(cx))?;
                     self.write = WriteState::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -144,11 +142,10 @@ impl Inner {
                     }
                     self.read_pos = 0;
                     self.rd = vec![];
-                    let action = Action::read(fd, DEFAULT_BUFFER_SIZE as u32)?;
-                    self.read = ReadState::Reading(action);
+                    self.read = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE as u32)?);
                 }
-                ReadState::Reading(action) => {
-                    self.rd = ready!(Pin::new(action).poll(cx))?;
+                ReadState::Reading(op) => {
+                    self.rd = ready!(Pin::new(op).poll(cx))?;
                     self.read = ReadState::Idle;
                     self.read_pos = 0;
                     if self.rd.is_empty() {

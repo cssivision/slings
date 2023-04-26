@@ -4,14 +4,14 @@ use std::os::unix::io::RawFd;
 use io_uring::{opcode, types};
 use socket2::SockAddr;
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct Connect {
     sock_addr: SockAddr,
 }
 
-impl Action<Connect> {
-    pub(crate) fn connect(fd: RawFd, sock_addr: SockAddr) -> io::Result<Action<Connect>> {
+impl Op<Connect> {
+    pub(crate) fn connect(fd: RawFd, sock_addr: SockAddr) -> io::Result<Op<Connect>> {
         let connect = Connect { sock_addr };
         let entry = opcode::Connect::new(
             types::Fd(fd),
@@ -19,7 +19,7 @@ impl Action<Connect> {
             connect.sock_addr.len(),
         )
         .build();
-        Action::submit(connect, entry)
+        Op::submit(connect, entry)
     }
 }
 

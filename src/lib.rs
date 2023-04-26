@@ -10,7 +10,7 @@ macro_rules! syscall {
     }};
 }
 
-mod driver;
+pub(crate) mod driver;
 mod local_executor;
 pub mod net;
 pub mod runtime;

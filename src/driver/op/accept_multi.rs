@@ -4,7 +4,7 @@ use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct AcceptMulti {
     results: VecDeque<CqeResult>,
@@ -16,12 +16,12 @@ impl AcceptMulti {
     }
 }
 
-impl Action<AcceptMulti> {
-    pub(crate) fn accept_multi(fd: RawFd) -> io::Result<Action<AcceptMulti>> {
+impl Op<AcceptMulti> {
+    pub(crate) fn accept_multi(fd: RawFd) -> io::Result<Op<AcceptMulti>> {
         let entry = opcode::AcceptMulti::new(types::Fd(fd))
             .flags(libc::SOCK_CLOEXEC)
             .build();
-        Action::submit(
+        Op::submit(
             AcceptMulti {
                 results: VecDeque::new(),
             },

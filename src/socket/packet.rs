@@ -7,7 +7,7 @@ use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
 use super::Socket;
-use crate::driver::{self, Action};
+use crate::driver::{self, Op};
 
 pub(crate) struct Packet {
     inner: RefCell<Inner>,
@@ -71,11 +71,10 @@ impl Inner {
         loop {
             match &mut self.send {
                 SendState::Idle => {
-                    let action = Action::send(fd, buf)?;
-                    self.send = SendState::Sending(action);
+                    self.send = SendState::Sending(Op::send(fd, buf)?);
                 }
-                SendState::Sending(action) => {
-                    let n = ready!(Pin::new(action).poll(cx))?;
+                SendState::Sending(op) => {
+                    let n = ready!(Pin::new(op).poll(cx))?;
                     self.send = SendState::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -93,11 +92,10 @@ impl Inner {
         loop {
             match &mut self.send_to {
                 SendMsgState::Idle => {
-                    let action = Action::sendmsg(fd, buf, addr)?;
-                    self.send_to = SendMsgState::Sending(action);
+                    self.send_to = SendMsgState::Sending(Op::sendmsg(fd, buf, addr)?);
                 }
-                SendMsgState::Sending(action) => {
-                    let n = ready!(Pin::new(action).poll(cx))?;
+                SendMsgState::Sending(op) => {
+                    let n = ready!(Pin::new(op).poll(cx))?;
                     self.send_to = SendMsgState::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -114,11 +112,10 @@ impl Inner {
         loop {
             match &mut self.recv {
                 RecvState::Idle => {
-                    let action = Action::recv(fd, buf.len())?;
-                    self.recv = RecvState::Recving(action);
+                    self.recv = RecvState::Recving(Op::recv(fd, buf.len())?);
                 }
-                RecvState::Recving(action) => {
-                    let buf1 = ready!(Pin::new(action).poll(cx))?;
+                RecvState::Recving(op) => {
+                    let buf1 = ready!(Pin::new(op).poll(cx))?;
                     let n = buf1.len();
                     buf[..n].copy_from_slice(&buf1[..n]);
                     self.recv = RecvState::Idle;
@@ -137,11 +134,10 @@ impl Inner {
         loop {
             match &mut self.recv_from {
                 RecvMsgState::Idle => {
-                    let action = Action::recvmsg(fd, buf.len())?;
-                    self.recv_from = RecvMsgState::Recving(action);
+                    self.recv_from = RecvMsgState::Recving(Op::recvmsg(fd, buf.len())?);
                 }
-                RecvMsgState::Recving(action) => {
-                    let (buf1, addr) = ready!(Pin::new(action).poll(cx))?;
+                RecvMsgState::Recving(op) => {
+                    let (buf1, addr) = ready!(Pin::new(op).poll(cx))?;
                     let n = buf1.len();
                     buf[..n].copy_from_slice(&buf1[..n]);
                     self.recv_from = RecvMsgState::Idle;
@@ -154,20 +150,20 @@ impl Inner {
 
 enum SendState {
     Idle,
-    Sending(Action<driver::Send>),
+    Sending(Op<driver::Send>),
 }
 
 enum SendMsgState {
     Idle,
-    Sending(Action<driver::SendMsg>),
+    Sending(Op<driver::SendMsg>),
 }
 
 enum RecvState {
     Idle,
-    Recving(Action<driver::Recv>),
+    Recving(Op<driver::Recv>),
 }
 
 enum RecvMsgState {
     Idle,
-    Recving(Action<driver::RecvMsg>),
+    Recving(Op<driver::RecvMsg>),
 }

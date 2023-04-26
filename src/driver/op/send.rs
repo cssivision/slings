@@ -3,18 +3,18 @@ use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Action, Completable, CqeResult};
+use crate::driver::{Completable, CqeResult, Op};
 
 #[allow(dead_code)]
 pub(crate) struct Send {
     buf: Vec<u8>,
 }
 
-impl Action<Send> {
-    pub(crate) fn send(fd: RawFd, buf: &[u8]) -> io::Result<Action<Send>> {
+impl Op<Send> {
+    pub(crate) fn send(fd: RawFd, buf: &[u8]) -> io::Result<Op<Send>> {
         let buf = buf.to_vec();
         let entry = opcode::Send::new(types::Fd(fd), buf.as_ptr(), buf.len() as u32).build();
-        Action::submit(Send { buf }, entry)
+        Op::submit(Send { buf }, entry)
     }
 }
 
