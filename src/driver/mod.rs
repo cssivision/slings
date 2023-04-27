@@ -181,7 +181,7 @@ impl<T> Op<T> {
 
     fn poll2(&mut self, cx: &mut Context) -> Poll<T::Output>
     where
-        T: 'static + Completable,
+        T: Completable,
     {
         let mut inner = self.driver.inner.borrow_mut();
         let state = inner.actions.get_mut(self.key).expect("invalid state key");
@@ -269,12 +269,12 @@ impl<T> Drop for Op<T> {
 
 impl<T> Future for Op<T>
 where
-    T: Unpin + 'static + Completable,
+    T: Unpin + Completable,
 {
     type Output = T::Output;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context) -> Poll<Self::Output> {
-        self.as_mut().poll2(cx)
+        self.poll2(cx)
     }
 }
 

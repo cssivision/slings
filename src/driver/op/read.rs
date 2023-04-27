@@ -22,8 +22,8 @@ impl Completable for Read {
     type Output = io::Result<Vec<u8>>;
 
     fn complete(mut self, cqe: CqeResult) -> Self::Output {
-        let n = cqe.result?;
-        unsafe { self.buf.set_len(n as usize) };
+        let n = cqe.result? as usize;
+        unsafe { self.buf.set_len(n) };
         Ok(self.buf)
     }
 }

@@ -18,12 +18,6 @@ pub(crate) struct Listener {
     io: Socket,
 }
 
-impl AsRawFd for Listener {
-    fn as_raw_fd(&self) -> RawFd {
-        self.io.as_raw_fd()
-    }
-}
-
 impl Listener {
     pub(crate) fn new(io: Socket) -> Listener {
         Listener {
@@ -78,6 +72,21 @@ impl FromRawFd for Listener {
     }
 }
 
+impl AsRawFd for Listener {
+    fn as_raw_fd(&self) -> RawFd {
+        self.io.as_raw_fd()
+    }
+}
+
+struct Inner {
+    accept: AcceptState,
+}
+
+enum AcceptState {
+    Idle,
+    Accepting(Op<driver::Accept>),
+}
+
 impl Inner {
     pub fn poll_accept(
         &mut self,
@@ -99,19 +108,21 @@ impl Inner {
     }
 }
 
+pub(crate) struct AcceptMulti {
+    fd: RawFd,
+    state: AcceptMultiState,
+}
+
+enum AcceptMultiState {
+    Idle,
+    Accepting(Op<driver::AcceptMulti>),
+    Done,
+}
+
 impl Stream for AcceptMulti {
     type Item = io::Result<(Socket, SocketAddr)>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.poll_accept_multi(cx)
-    }
-}
-
-impl AcceptMulti {
-    fn poll_accept_multi(
-        &mut self,
-        cx: &mut Context<'_>,
-    ) -> Poll<Option<io::Result<(Socket, SocketAddr)>>> {
         loop {
             match &mut self.state {
                 AcceptMultiState::Idle => {
@@ -135,24 +146,4 @@ impl AcceptMulti {
             }
         }
     }
-}
-
-struct Inner {
-    accept: AcceptState,
-}
-
-enum AcceptState {
-    Idle,
-    Accepting(Op<driver::Accept>),
-}
-
-pub(crate) struct AcceptMulti {
-    fd: RawFd,
-    state: AcceptMultiState,
-}
-
-enum AcceptMultiState {
-    Idle,
-    Accepting(Op<driver::AcceptMulti>),
-    Done,
 }

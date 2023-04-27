@@ -33,7 +33,6 @@ impl Completable for Accept {
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
         let fd = cqe.result? as i32;
-        let socket = Socket { fd };
-        Ok((socket, self.socketaddr))
+        Ok((Socket { fd }, self.socketaddr))
     }
 }

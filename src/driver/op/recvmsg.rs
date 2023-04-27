@@ -42,8 +42,8 @@ impl Completable for RecvMsg {
     type Output = io::Result<(Vec<u8>, SocketAddr)>;
 
     fn complete(mut self, cqe: CqeResult) -> Self::Output {
-        let n = cqe.result?;
-        unsafe { self.buf.set_len(n as usize) };
+        let n = cqe.result? as usize;
+        unsafe { self.buf.set_len(n) };
         let socket_addr = self
             .socket_addr
             .as_socket()
