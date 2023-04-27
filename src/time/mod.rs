@@ -15,7 +15,7 @@ pub use delay::{delay_for, delay_until, Delay};
 pub use interval::{interval, interval_at, Interval};
 pub use timeout::{timeout, timeout_at, Timeout};
 
-enum State {
+enum TimeoutState {
     Idle,
     Waiting(Op<driver::Timeout>),
     Done,
@@ -23,7 +23,7 @@ enum State {
 
 pub struct Timer {
     deadline: Instant,
-    state: State,
+    state: TimeoutState,
     waker: Option<Waker>,
 }
 
@@ -31,7 +31,7 @@ impl Timer {
     pub fn new(deadline: Instant) -> Timer {
         Timer {
             deadline,
-            state: State::Idle,
+            state: TimeoutState::Idle,
             waker: None,
         }
     }
@@ -45,14 +45,14 @@ impl Timer {
     }
 
     pub fn reset(&mut self, when: Instant) {
-        self.state = State::Idle;
+        self.state = TimeoutState::Idle;
         self.deadline = when;
         if let Some(waker) = self.waker.as_ref() {
             let duration = self.deadline.sub(Instant::now());
-            let action = Op::timeout(duration.as_secs(), duration.subsec_nanos())
+            let op = Op::timeout(duration.as_secs(), duration.subsec_nanos())
                 .expect("fail to submit timeout sqe");
-            action.insert_waker(waker.clone());
-            self.state = State::Waiting(action);
+            op.reset(waker.clone());
+            self.state = TimeoutState::Waiting(op);
         }
     }
 
@@ -63,12 +63,12 @@ impl Timer {
 
         loop {
             match &mut self.state {
-                State::Idle => {
+                TimeoutState::Idle => {
                     let duration = self.deadline.sub(Instant::now());
-                    let action = Op::timeout(duration.as_secs(), duration.subsec_nanos())?;
-                    self.state = State::Waiting(action);
+                    let op = Op::timeout(duration.as_secs(), duration.subsec_nanos())?;
+                    self.state = TimeoutState::Waiting(op);
                 }
-                State::Waiting(action) => {
+                TimeoutState::Waiting(op) => {
                     match &self.waker {
                         Some(waker) if !waker.will_wake(cx.waker()) => {
                             self.waker = Some(cx.waker().clone());
@@ -78,10 +78,11 @@ impl Timer {
                         }
                         _ => {}
                     }
-                    ready!(Pin::new(action).poll(cx))?;
-                    self.state = State::Done;
+                    ready!(Pin::new(op).poll(cx))?;
+                    self.state = TimeoutState::Done;
                 }
-                State::Done => {
+                TimeoutState::Done => {
+                    self.waker = None;
                     return Poll::Ready(Ok(self.deadline));
                 }
             }

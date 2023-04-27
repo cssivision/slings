@@ -32,7 +32,7 @@ impl Clone for Driver {
 
 struct Inner {
     ring: IoUring,
-    actions: Slab<State>,
+    ops: Slab<State>,
 }
 
 impl Driver {
@@ -41,7 +41,7 @@ impl Driver {
         let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
                 ring,
-                actions: Slab::with_capacity(256),
+                ops: Slab::with_capacity(256),
             })),
         };
         Ok(driver)
@@ -68,9 +68,9 @@ impl Driver {
                 continue;
             }
             let index = cqe.user_data() as _;
-            let action = &mut inner.actions[index];
-            if action.complete(cqe) {
-                inner.actions.remove(index);
+            let ops = &mut inner.ops[index];
+            if ops.complete(cqe) {
+                inner.ops.remove(index);
             }
         }
         Ok(())
@@ -80,10 +80,10 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
-    pub(crate) fn submit<T>(&self, action: T, sqe: Entry) -> std::io::Result<Op<T>> {
+    pub(crate) fn submit<T>(&self, op: T, sqe: Entry) -> std::io::Result<Op<T>> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
-        let key = inner.actions.insert(State::Submitted);
+        let key = inner.ops.insert(State::Submitted);
 
         let ring = &mut inner.ring;
         if ring.submission().is_full() {
@@ -98,7 +98,7 @@ impl Driver {
         ring.submit()?;
         Ok(Op {
             driver: self.clone(),
-            action: Some(action),
+            op: Some(op),
             key,
         })
     }
@@ -160,23 +160,24 @@ pub(crate) trait Completable {
 
 pub(crate) struct Op<T: 'static> {
     pub driver: Driver,
-    pub action: Option<T>,
+    pub op: Option<T>,
     pub key: usize,
 }
 
 impl<T> Op<T> {
     pub(crate) fn get_mut(&mut self) -> &mut T {
-        self.action.as_mut().unwrap()
+        self.op.as_mut().unwrap()
     }
 
-    pub(crate) fn submit(action: T, entry: Entry) -> io::Result<Op<T>> {
-        CURRENT.with(|driver| driver.submit(action, entry))
+    pub(crate) fn submit(op: T, entry: Entry) -> io::Result<Op<T>> {
+        CURRENT.with(|driver| driver.submit(op, entry))
     }
 
-    pub(crate) fn insert_waker(&self, waker: Waker) {
+    pub(crate) fn reset(&self, waker: Waker) {
         let mut inner = self.driver.inner.borrow_mut();
-        let state = inner.actions.get_mut(self.key).expect("invalid state key");
-        *state = State::Waiting(waker);
+        if let Some(state) = inner.ops.get_mut(self.key) {
+            *state = State::Waiting(waker);
+        }
     }
 
     fn poll2(&mut self, cx: &mut Context) -> Poll<T::Output>
@@ -184,7 +185,7 @@ impl<T> Op<T> {
         T: Completable,
     {
         let mut inner = self.driver.inner.borrow_mut();
-        let state = inner.actions.get_mut(self.key).expect("invalid state key");
+        let state = inner.ops.get_mut(self.key).expect("invalid state key");
 
         match mem::replace(state, State::Submitted) {
             State::Submitted => {
@@ -200,11 +201,11 @@ impl<T> Op<T> {
                 Poll::Pending
             }
             State::Completed(cqe) => {
-                inner.actions.remove(self.key);
-                Poll::Ready(self.action.take().unwrap().complete(cqe))
+                inner.ops.remove(self.key);
+                Poll::Ready(self.op.take().unwrap().complete(cqe))
             }
             State::CompletionList(list) => {
-                let data = self.action.as_mut().unwrap();
+                let data = self.op.as_mut().unwrap();
                 let mut status = None;
                 let mut updated = false;
                 for cqe in list.into_iter() {
@@ -238,17 +239,17 @@ impl<T> Op<T> {
 impl<T> Drop for Op<T> {
     fn drop(&mut self) {
         let mut inner = self.driver.inner.borrow_mut();
-        let state = match inner.actions.get_mut(self.key) {
+        let state = match inner.ops.get_mut(self.key) {
             Some(s) => s,
             None => return,
         };
 
         match state {
             State::Submitted | State::Waiting(_) => {
-                *state = State::Ignored(Box::new(self.action.take()));
+                *state = State::Ignored(Box::new(self.op.take()));
             }
             State::Completed(..) => {
-                inner.actions.remove(self.key);
+                inner.ops.remove(self.key);
             }
             State::CompletionList(list) => {
                 let more = if !list.is_empty() {
@@ -257,9 +258,9 @@ impl<T> Drop for Op<T> {
                     false
                 };
                 if more {
-                    *state = State::Ignored(Box::new(self.action.take()));
+                    *state = State::Ignored(Box::new(self.op.take()));
                 } else {
-                    inner.actions.remove(self.key);
+                    inner.ops.remove(self.key);
                 }
             }
             State::Ignored(..) => unreachable!(),
