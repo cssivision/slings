@@ -36,7 +36,7 @@ struct Inner {
 }
 
 impl Driver {
-    pub(crate) fn new() -> std::io::Result<Driver> {
+    pub(crate) fn new() -> io::Result<Driver> {
         let ring = IoUring::new(256)?;
         let driver = Driver {
             inner: Rc::new(RefCell::new(Inner {
@@ -47,7 +47,7 @@ impl Driver {
         Ok(driver)
     }
 
-    pub(crate) fn wait(&self) -> std::io::Result<()> {
+    pub(crate) fn wait(&self) -> io::Result<()> {
         let inner = &mut *self.inner.borrow_mut();
         let ring = &mut inner.ring;
 
@@ -55,7 +55,7 @@ impl Driver {
             if e.raw_os_error() == Some(libc::EBUSY) {
                 return Ok(());
             }
-            if e.kind() == std::io::ErrorKind::Interrupted {
+            if e.kind() == io::ErrorKind::Interrupted {
                 return Ok(());
             }
             return Err(e);
@@ -68,8 +68,8 @@ impl Driver {
                 continue;
             }
             let index = cqe.user_data() as _;
-            let ops = &mut inner.ops[index];
-            if ops.complete(cqe) {
+            let op = &mut inner.ops[index];
+            if op.complete(cqe) {
                 inner.ops.remove(index);
             }
         }
@@ -80,7 +80,7 @@ impl Driver {
         CURRENT.set(self, f)
     }
 
-    pub(crate) fn submit<T>(&self, op: T, sqe: Entry) -> std::io::Result<Op<T>> {
+    pub(crate) fn submit<T>(&self, op: T, sqe: Entry) -> io::Result<Op<T>> {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let key = inner.ops.insert(State::Submitted);
