@@ -2,9 +2,11 @@ use std::cell::RefCell;
 use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
+
+use socket2::SockAddr;
 
 use super::Socket;
 use crate::driver::{self, Op};
@@ -23,6 +25,7 @@ impl Packet {
                 recv_from: RecvMsgState::Idle,
                 send: SendState::Idle,
                 send_to: SendMsgState::Idle,
+                connect: ConnectState::Idle,
             }),
         }
     }
@@ -32,7 +35,15 @@ impl Packet {
     }
 
     pub(crate) fn poll_send(&self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
-        self.inner.borrow_mut().poll_send(cx, buf, self.io.fd)
+        self.inner
+            .borrow_mut()
+            .poll_send(cx, buf, self.io.as_raw_fd())
+    }
+
+    pub(crate) fn poll_connect(&self, cx: &mut Context, addr: &SockAddr) -> Poll<io::Result<()>> {
+        self.inner
+            .borrow_mut()
+            .poll_connect(cx, self.io.as_raw_fd(), addr)
     }
 
     pub(crate) fn poll_send_to(
@@ -43,11 +54,13 @@ impl Packet {
     ) -> Poll<io::Result<usize>> {
         self.inner
             .borrow_mut()
-            .poll_send_to(cx, buf, addr, self.io.fd)
+            .poll_send_to(cx, buf, addr, self.io.as_raw_fd())
     }
 
     pub(crate) fn poll_recv(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        self.inner.borrow_mut().poll_recv(cx, buf, self.io.fd)
+        self.inner
+            .borrow_mut()
+            .poll_recv(cx, buf, self.io.as_raw_fd())
     }
 
     pub(crate) fn poll_recv_from(
@@ -55,7 +68,9 @@ impl Packet {
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<(usize, SocketAddr)>> {
-        self.inner.borrow_mut().poll_recv_from(cx, buf, self.io.fd)
+        self.inner
+            .borrow_mut()
+            .poll_recv_from(cx, buf, self.io.as_raw_fd())
     }
 }
 
@@ -64,6 +79,7 @@ struct Inner {
     recv_from: RecvMsgState,
     send: SendState,
     send_to: SendMsgState,
+    connect: ConnectState,
 }
 
 impl Inner {
@@ -77,6 +93,28 @@ impl Inner {
                     let n = ready!(Pin::new(op).poll(cx))?;
                     self.send = SendState::Idle;
                     return Poll::Ready(Ok(n));
+                }
+            }
+        }
+    }
+
+    fn poll_connect(
+        &mut self,
+        cx: &mut Context,
+        fd: RawFd,
+        addr: &SockAddr,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            match &mut self.connect {
+                ConnectState::Idle => {
+                    self.connect = ConnectState::Connecting(Op::connect(fd, addr.clone())?);
+                }
+                ConnectState::Connecting(op) => {
+                    ready!(Pin::new(op).poll(cx))?;
+                    self.connect = ConnectState::Done;
+                }
+                ConnectState::Done => {
+                    return Poll::Ready(Ok(()));
                 }
             }
         }
@@ -146,6 +184,12 @@ impl Inner {
             }
         }
     }
+}
+
+enum ConnectState {
+    Idle,
+    Connecting(Op<driver::Connect>),
+    Done,
 }
 
 enum SendState {

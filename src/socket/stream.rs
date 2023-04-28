@@ -1,9 +1,11 @@
 use std::future::Future;
 use std::io;
 use std::net;
-use std::os::unix::io::RawFd;
+use std::os::unix::io::{AsRawFd, RawFd};
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
+
+use socket2::SockAddr;
 
 use super::Socket;
 use crate::driver::{self, Op};
@@ -25,6 +27,7 @@ impl Stream {
                 read: ReadState::Idle,
                 write: WriteState::Idle,
                 shutdown: ShutdownState::Idle,
+                connect: ConnectState::Idle,
             },
         }
     }
@@ -33,12 +36,20 @@ impl Stream {
         &self.io
     }
 
+    pub(crate) fn poll_connect(
+        &mut self,
+        cx: &mut Context,
+        addr: &SockAddr,
+    ) -> Poll<io::Result<()>> {
+        self.inner.poll_connect(cx, self.io.as_raw_fd(), addr)
+    }
+
     pub(crate) fn poll_read(
         &mut self,
         cx: &mut Context,
         buf: &mut [u8],
     ) -> Poll<io::Result<usize>> {
-        let src = ready!(self.inner.poll_fill_buf(cx, self.io.fd))?;
+        let src = ready!(self.inner.poll_fill_buf(cx, self.io.as_raw_fd()))?;
         let n = buf.len().min(src.len());
         buf[..n].copy_from_slice(&src[..n]);
         self.inner.consume(n);
@@ -46,7 +57,7 @@ impl Stream {
     }
 
     pub(crate) fn poll_fill_buf(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<&[u8]>> {
-        self.inner.poll_fill_buf(cx, self.io.fd)
+        self.inner.poll_fill_buf(cx, self.io.as_raw_fd())
     }
 
     pub(crate) fn consume(&mut self, amt: usize) {
@@ -54,7 +65,7 @@ impl Stream {
     }
 
     pub(crate) fn poll_write(&mut self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
-        self.inner.poll_write(cx, buf, self.io.fd)
+        self.inner.poll_write(cx, buf, self.io.as_raw_fd())
     }
 
     pub(crate) fn poll_shutdown(
@@ -67,7 +78,7 @@ impl Stream {
             net::Shutdown::Read => libc::SHUT_RD,
             net::Shutdown::Both => libc::SHUT_RDWR,
         };
-        self.inner.poll_shutdown(cx, self.io.fd, how)
+        self.inner.poll_shutdown(cx, self.io.as_raw_fd(), how)
     }
 }
 
@@ -77,6 +88,13 @@ struct Inner {
     read: ReadState,
     write: WriteState,
     shutdown: ShutdownState,
+    connect: ConnectState,
+}
+
+enum ConnectState {
+    Idle,
+    Connecting(Op<driver::Connect>),
+    Done,
 }
 
 enum WriteState {
@@ -96,6 +114,28 @@ enum ShutdownState {
 }
 
 impl Inner {
+    fn poll_connect(
+        &mut self,
+        cx: &mut Context,
+        fd: RawFd,
+        addr: &SockAddr,
+    ) -> Poll<io::Result<()>> {
+        loop {
+            match &mut self.connect {
+                ConnectState::Idle => {
+                    self.connect = ConnectState::Connecting(Op::connect(fd, addr.clone())?);
+                }
+                ConnectState::Connecting(op) => {
+                    ready!(Pin::new(op).poll(cx))?;
+                    self.connect = ConnectState::Done;
+                }
+                ConnectState::Done => {
+                    return Poll::Ready(Ok(()));
+                }
+            }
+        }
+    }
+
     fn poll_shutdown(
         &mut self,
         cx: &mut Context,

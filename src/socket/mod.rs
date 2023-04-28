@@ -13,12 +13,10 @@ use std::net::SocketAddr;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::path::Path;
 
-use crate::driver::Op;
-
 use socket2::SockAddr;
 
 pub(crate) struct Socket {
-    pub(crate) fd: RawFd,
+    fd: RawFd,
 }
 
 fn get_domain(socket_addr: SocketAddr) -> libc::c_int {
@@ -41,10 +39,6 @@ impl Socket {
         let domain = libc::AF_UNIX;
         let fd = socket2::Socket::new(domain.into(), socket_type.into(), None)?.into_raw_fd();
         Ok(Socket { fd })
-    }
-
-    pub(crate) async fn connect(&self, sock_addr: SockAddr) -> io::Result<()> {
-        Op::connect(self.fd, sock_addr)?.await
     }
 
     pub(crate) fn bind(socket_addr: SocketAddr, socket_type: libc::c_int) -> io::Result<Socket> {
@@ -143,6 +137,12 @@ impl Drop for Socket {
 impl AsRawFd for Socket {
     fn as_raw_fd(&self) -> RawFd {
         self.fd
+    }
+}
+
+impl From<RawFd> for Socket {
+    fn from(fd: RawFd) -> Self {
+        Socket { fd }
     }
 }
 

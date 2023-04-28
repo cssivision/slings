@@ -1,3 +1,4 @@
+use std::future::poll_fn;
 use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
 use std::os::unix::net;
@@ -20,10 +21,10 @@ impl UnixStream {
         P: AsRef<Path>,
     {
         let socket = Socket::new_unix(libc::SOCK_STREAM)?;
-        socket.connect(SockAddr::unix(path)?).await?;
-        Ok(UnixStream {
-            inner: socket::Stream::new(socket),
-        })
+        let mut stream = socket::Stream::new(socket);
+        let addr = SockAddr::unix(path)?;
+        poll_fn(|cx| stream.poll_connect(cx, &addr)).await?;
+        Ok(UnixStream { inner: stream })
     }
 
     pub fn from_std(stream: net::UnixStream) -> io::Result<UnixStream> {

@@ -1,3 +1,4 @@
+use std::future::poll_fn;
 use std::io;
 use std::net::{self, SocketAddr, ToSocketAddrs};
 use std::os::unix::io::{AsRawFd, FromRawFd, RawFd};
@@ -23,10 +24,9 @@ impl TcpStream {
 
     async fn connect_addr(addr: SocketAddr) -> io::Result<TcpStream> {
         let socket = Socket::new(addr, libc::SOCK_STREAM)?;
-        socket.connect(SockAddr::from(addr)).await?;
-        Ok(TcpStream {
-            inner: socket::Stream::new(socket),
-        })
+        let mut stream = socket::Stream::new(socket);
+        poll_fn(|cx| stream.poll_connect(cx, &SockAddr::from(addr))).await?;
+        Ok(TcpStream { inner: stream })
     }
 
     pub async fn connect<A: ToSocketAddrs>(addr: A) -> io::Result<TcpStream> {

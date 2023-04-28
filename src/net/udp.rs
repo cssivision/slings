@@ -46,7 +46,7 @@ impl UdpSocket {
         let mut last_err = None;
 
         for addr in addrs {
-            match self.inner.get_ref().connect(SockAddr::from(addr)).await {
+            match poll_fn(|cx| self.inner.poll_connect(cx, &SockAddr::from(addr))).await {
                 Ok(_) => return Ok(()),
                 Err(e) => last_err = Some(e),
             }
