@@ -8,7 +8,7 @@ use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
 
 use io_uring::squeue::Entry;
-use io_uring::{cqueue, IoUring};
+use io_uring::{cqueue, opcode, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
@@ -33,6 +33,20 @@ impl Clone for Driver {
 struct Inner {
     ring: IoUring,
     ops: Slab<State>,
+}
+
+impl Inner {
+    fn submit(&mut self, sqe: Entry) -> io::Result<()> {
+        if self.ring.submission().is_full() {
+            self.ring.submit()?;
+        }
+        self.ring.submission().sync();
+        unsafe {
+            self.ring.submission().push(&sqe).expect("push entry fail");
+        }
+        self.ring.submit()?;
+        Ok(())
+    }
 }
 
 impl Driver {
@@ -84,18 +98,8 @@ impl Driver {
         let mut inner = self.inner.borrow_mut();
         let inner = &mut *inner;
         let key = inner.ops.insert(State::Submitted);
-
-        let ring = &mut inner.ring;
-        if ring.submission().is_full() {
-            ring.submit()?;
-        }
-        ring.submission().sync();
-
         let sqe = sqe.user_data(key as u64);
-        unsafe {
-            ring.submission().push(&sqe).expect("push entry fail");
-        }
-        ring.submit()?;
+        inner.submit(sqe)?;
         Ok(Op {
             driver: self.clone(),
             op: Some(op),
@@ -244,8 +248,10 @@ impl<T> Drop for Op<T> {
             None => return,
         };
 
+        let mut finished = true;
         match state {
             State::Submitted | State::Waiting(_) => {
+                finished = false;
                 *state = State::Ignored(Box::new(self.op.take()));
             }
             State::Completed(..) => {
@@ -253,17 +259,24 @@ impl<T> Drop for Op<T> {
             }
             State::CompletionList(list) => {
                 let more = if !list.is_empty() {
-                    io_uring::cqueue::more(list.last().unwrap().flags)
+                    cqueue::more(list.last().unwrap().flags)
                 } else {
                     false
                 };
                 if more {
+                    finished = false;
                     *state = State::Ignored(Box::new(self.op.take()));
                 } else {
                     inner.ops.remove(self.key);
                 }
             }
             State::Ignored(..) => unreachable!(),
+        }
+        if !finished {
+            let sqe = opcode::AsyncCancel::new(self.key as u64)
+                .build()
+                .user_data(u64::MAX);
+            let _ = inner.submit(sqe);
         }
     }
 }
