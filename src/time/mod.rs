@@ -1,11 +1,7 @@
-use std::future::Future;
-use std::io;
-use std::ops::Sub;
-use std::pin::Pin;
-use std::task::{ready, Context, Poll, Waker};
+use std::task::{Context, Poll, Waker};
 use std::time::Instant;
 
-use crate::driver::{self, Op};
+use crate::driver;
 
 pub mod delay;
 pub mod interval;
@@ -15,15 +11,9 @@ pub use delay::{delay_for, delay_until, Delay};
 pub use interval::{interval, interval_at, Interval};
 pub use timeout::{timeout, timeout_at, Timeout};
 
-enum TimeoutState {
-    Idle,
-    Waiting(Op<driver::Timeout>),
-    Done,
-}
-
-pub struct Timer {
+pub(crate) struct Timer {
     deadline: Instant,
-    state: TimeoutState,
+    key: usize,
     waker: Option<Waker>,
 }
 
@@ -31,7 +21,7 @@ impl Timer {
     pub fn new(deadline: Instant) -> Timer {
         Timer {
             deadline,
-            state: TimeoutState::Idle,
+            key: 0,
             waker: None,
         }
     }
@@ -44,48 +34,50 @@ impl Timer {
         self.deadline < Instant::now()
     }
 
-    pub fn reset(&mut self, when: Instant) {
-        self.state = TimeoutState::Idle;
-        self.deadline = when;
-        if let Some(waker) = self.waker.as_ref() {
-            let duration = self.deadline.sub(Instant::now());
-            let op = Op::timeout(duration.as_secs(), duration.subsec_nanos())
-                .expect("fail to submit timeout sqe");
-            op.reset(waker.clone());
-            self.state = TimeoutState::Waiting(op);
-        }
+    fn insert_timer(&self, when: Instant, waker: &Waker) -> usize {
+        driver::CURRENT.with(|driver| driver.insert_timer(when, waker))
     }
 
-    fn poll_timeout(&mut self, cx: &mut Context) -> Poll<io::Result<Instant>> {
-        if self.deadline <= Instant::now() {
-            return Poll::Ready(Ok(self.deadline));
-        }
+    fn remove_timer(&self) {
+        driver::CURRENT.with(|driver| driver.remove_timer(self.deadline, self.key))
+    }
 
-        loop {
-            match &mut self.state {
-                TimeoutState::Idle => {
-                    let duration = self.deadline.sub(Instant::now());
-                    let op = Op::timeout(duration.as_secs(), duration.subsec_nanos())?;
-                    self.state = TimeoutState::Waiting(op);
-                }
-                TimeoutState::Waiting(op) => {
-                    match &self.waker {
-                        Some(waker) if !waker.will_wake(cx.waker()) => {
-                            self.waker = Some(cx.waker().clone());
-                        }
-                        None => {
-                            self.waker = Some(cx.waker().clone());
-                        }
-                        _ => {}
-                    }
-                    ready!(Pin::new(op).poll(cx))?;
-                    self.state = TimeoutState::Done;
-                }
-                TimeoutState::Done => {
-                    self.waker = None;
-                    return Poll::Ready(Ok(self.deadline));
-                }
+    pub fn reset(&mut self, when: Instant) {
+        if let Some(waker) = self.waker.as_ref() {
+            self.remove_timer();
+            self.key = self.insert_timer(when, waker);
+        }
+        self.deadline = when;
+    }
+
+    pub fn poll_timeout(&mut self, cx: &mut Context) -> Poll<Instant> {
+        if self.deadline <= Instant::now() {
+            if self.key > 0 {
+                self.remove_timer();
             }
+            Poll::Ready(self.deadline)
+        } else {
+            match self.waker {
+                None => {
+                    self.key = self.insert_timer(self.deadline, cx.waker());
+                    self.waker = Some(cx.waker().clone());
+                }
+                Some(ref w) if !w.will_wake(cx.waker()) => {
+                    self.remove_timer();
+                    self.key = self.insert_timer(self.deadline, cx.waker());
+                    self.waker = Some(cx.waker().clone());
+                }
+                _ => {}
+            }
+            Poll::Pending
+        }
+    }
+}
+
+impl Drop for Timer {
+    fn drop(&mut self) {
+        if let Some(_) = self.waker.take() {
+            self.remove_timer();
         }
     }
 }

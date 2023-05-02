@@ -1,14 +1,16 @@
 use std::any::Any;
 use std::cell::RefCell;
+use std::collections::{BTreeMap, VecDeque};
 use std::future::Future;
 use std::io;
 use std::mem;
 use std::pin::Pin;
 use std::rc::Rc;
 use std::task::{Context, Poll, Waker};
+use std::time::{Duration, Instant};
 
 use io_uring::squeue::Entry;
-use io_uring::{cqueue, opcode, IoUring};
+use io_uring::{cqueue, opcode, types, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
@@ -22,8 +24,11 @@ pub const BUF_BGID: u16 = 666;
 const DEFAULT_RING_ENTRIES: u16 = 128;
 const DEFAULT_BUF_CNT: u16 = 128;
 const DEFAULT_BUF_LEN: usize = 4096;
+const DEFAULT_TIME_OP_SIZE: usize = 1000;
+const TIMER_KEY: u64 = u64::MAX - 1;
+const RESERVE_MIN_KEY: u64 = u64::MAX - 1;
 
-scoped_thread_local!(static CURRENT: Driver);
+scoped_thread_local!(pub(crate) static CURRENT: Driver);
 
 pub(crate) struct Driver {
     inner: Rc<RefCell<Inner>>,
@@ -41,6 +46,15 @@ struct Inner {
     bufgroup: BufRing,
     ring: IoUring,
     ops: Slab<State>,
+    timer_ops: VecDeque<TimerOp>,
+    timers: BTreeMap<(Instant, usize), Waker>,
+    id: usize,
+}
+
+/// A single timer operation.
+enum TimerOp {
+    Insert(Instant, usize, Waker),
+    Remove(Instant, usize),
 }
 
 impl Inner {
@@ -55,6 +69,9 @@ impl Inner {
             ring,
             ops: Slab::with_capacity(256),
             bufgroup,
+            timer_ops: VecDeque::new(),
+            timers: BTreeMap::new(),
+            id: 0,
         };
         inner.register_buf_ring()?;
         Ok(inner)
@@ -112,17 +129,36 @@ impl Inner {
     fn submit(&mut self, sqe: Entry) -> io::Result<()> {
         if self.ring.submission().is_full() {
             self.ring.submit()?;
+            self.ring.submission().sync();
         }
-        self.ring.submission().sync();
         unsafe {
             self.ring.submission().push(&sqe).expect("push entry fail");
         }
         self.ring.submit()?;
+        self.ring.submission().sync();
         Ok(())
     }
 
     fn wait(&mut self) -> io::Result<()> {
-        if let Err(e) = self.ring.submit_and_wait(1) {
+        let mut wakers = Vec::new();
+        let timeout = self.process_timers(&mut wakers);
+
+        // submit timeout op.
+        if let Some(timeout) = timeout {
+            let timespec = types::Timespec::new()
+                .sec(timeout.as_secs())
+                .nsec(timeout.subsec_nanos());
+            let sqe = opcode::Timeout::new(&timespec as *const _)
+                .build()
+                .user_data(TIMER_KEY);
+            self.submit(sqe)?;
+        }
+        let want = if timeout == Some(Duration::from_secs(0)) {
+            0
+        } else {
+            1
+        };
+        if let Err(e) = self.ring.submit_and_wait(want) {
             if e.raw_os_error() == Some(libc::EBUSY) {
                 return Ok(());
             }
@@ -135,7 +171,7 @@ impl Inner {
         let mut cq = self.ring.completion();
         cq.sync();
         for cqe in cq {
-            if cqe.user_data() == u64::MAX {
+            if cqe.user_data() >= RESERVE_MIN_KEY {
                 continue;
             }
             let index = cqe.user_data() as _;
@@ -143,6 +179,14 @@ impl Inner {
             if op.complete(cqe) {
                 self.ops.remove(index);
             }
+        }
+
+        if timeout != Some(Duration::from_secs(0)) {
+            let _ = self.process_timers(&mut wakers);
+        }
+        // Wake up ready tasks.
+        for waker in wakers {
+            waker.wake();
         }
         Ok(())
     }
@@ -164,6 +208,59 @@ impl Inner {
         let buf = self.bufgroup.get_buf(len, bid)?;
         Ok(buf)
     }
+
+    fn insert_timer(&mut self, when: Instant, waker: &Waker) -> usize {
+        let id = self.id;
+        self.id = self.id.wrapping_add(1);
+        self.timer_ops
+            .push_back(TimerOp::Insert(when, id, waker.clone()));
+        if self.timer_ops.len() >= DEFAULT_TIME_OP_SIZE {
+            self.process_timer_ops();
+        }
+        id
+    }
+
+    fn remove_timer(&mut self, when: Instant, id: usize) {
+        self.timer_ops.push_back(TimerOp::Remove(when, id));
+        if self.timer_ops.len() >= DEFAULT_TIME_OP_SIZE {
+            self.process_timer_ops();
+        }
+    }
+
+    fn process_timers(&mut self, wakers: &mut Vec<Waker>) -> Option<Duration> {
+        self.process_timer_ops();
+
+        // Split timers into ready and pending timers.
+        let now = Instant::now();
+        let pending = self.timers.split_off(&(now, 0));
+        let ready = mem::replace(&mut self.timers, pending);
+        let dur = if ready.is_empty() {
+            self.timers
+                .keys()
+                .next()
+                .map(|(when, _)| when.saturating_duration_since(now))
+        } else {
+            Some(Duration::from_secs(0))
+        };
+        for (_, waker) in ready {
+            wakers.push(waker);
+        }
+        dur
+    }
+
+    fn process_timer_ops(&mut self) {
+        for _ in 0..self.timer_ops.capacity() {
+            match self.timer_ops.pop_front() {
+                Some(TimerOp::Insert(when, id, waker)) => {
+                    self.timers.insert((when, id), waker);
+                }
+                Some(TimerOp::Remove(when, id)) => {
+                    self.timers.remove(&(when, id));
+                }
+                None => break,
+            }
+        }
+    }
 }
 
 impl Driver {
@@ -171,6 +268,14 @@ impl Driver {
         Ok(Driver {
             inner: Rc::new(RefCell::new(Inner::new()?)),
         })
+    }
+
+    pub(crate) fn insert_timer(&self, when: Instant, waker: &Waker) -> usize {
+        self.inner.borrow_mut().insert_timer(when, waker)
+    }
+
+    pub(crate) fn remove_timer(&self, when: Instant, id: usize) {
+        self.inner.borrow_mut().remove_timer(when, id)
     }
 
     pub(crate) fn wait(&self) -> io::Result<()> {
@@ -263,13 +368,6 @@ impl<T> Op<T> {
 
     pub(crate) fn submit(op: T, entry: Entry) -> io::Result<Op<T>> {
         CURRENT.with(|driver| driver.submit(op, entry))
-    }
-
-    pub(crate) fn reset(&self, waker: Waker) {
-        let mut inner = self.driver.inner.borrow_mut();
-        if let Some(state) = inner.ops.get_mut(self.key) {
-            *state = State::Waiting(waker);
-        }
     }
 
     fn poll2(&mut self, cx: &mut Context) -> Poll<T::Output>

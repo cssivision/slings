@@ -38,7 +38,7 @@ impl Runtime {
                 continue;
             }
             if !NOTIFIED.with(Cell::get) {
-                self.driver.wait().expect("driver wait error");
+                self.driver.wait().expect("driver wait fail");
             }
             NOTIFIED.with(|notified| notified.set(false));
         })
