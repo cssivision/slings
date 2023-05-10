@@ -50,7 +50,7 @@ impl TcpListener {
         poll_fn(|cx| self.poll_accept(cx)).await
     }
 
-    pub fn accept_multi(&self) -> impl Stream<Item = io::Result<(TcpStream, SocketAddr)>> {
+    pub fn accept_multi(self) -> impl Stream<Item = io::Result<(TcpStream, SocketAddr)>> {
         AcceptMulti {
             inner: self.inner.accept_multi(),
         }

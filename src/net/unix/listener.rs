@@ -29,7 +29,7 @@ impl UnixListener {
         poll_fn(|cx| self.poll_accept(cx)).await
     }
 
-    pub fn accept_multi(&self) -> impl Stream<Item = io::Result<(UnixStream, SocketAddr)>> {
+    pub fn accept_multi(self) -> impl Stream<Item = io::Result<(UnixStream, SocketAddr)>> {
         AcceptMulti {
             inner: self.inner.accept_multi(),
         }

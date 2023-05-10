@@ -46,9 +46,9 @@ impl Listener {
         Ok(Listener::new(socket))
     }
 
-    pub(crate) fn accept_multi(&self) -> AcceptMulti {
+    pub(crate) fn accept_multi(self) -> AcceptMulti {
         AcceptMulti {
-            fd: self.io.as_raw_fd(),
+            socket: self.io,
             state: AcceptMultiState::Idle,
         }
     }
@@ -114,7 +114,7 @@ impl Inner {
 }
 
 pub(crate) struct AcceptMulti {
-    fd: RawFd,
+    socket: Socket,
     state: AcceptMultiState,
 }
 
@@ -131,7 +131,8 @@ impl Stream for AcceptMulti {
         loop {
             match &mut self.state {
                 AcceptMultiState::Idle => {
-                    self.state = AcceptMultiState::Accepting(Op::accept_multi(self.fd)?);
+                    self.state =
+                        AcceptMultiState::Accepting(Op::accept_multi(self.socket.as_raw_fd())?);
                 }
                 AcceptMultiState::Accepting(op) => {
                     if let Some(res) = op.get_mut().next() {
