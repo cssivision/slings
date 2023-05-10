@@ -15,6 +15,11 @@ use std::path::Path;
 
 use socket2::SockAddr;
 
+pub(crate) struct SocketStorage {
+    pub(crate) storage: libc::sockaddr_storage,
+    pub(crate) socklen: libc::socklen_t,
+}
+
 pub(crate) struct Socket {
     fd: RawFd,
 }

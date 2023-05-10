@@ -6,6 +6,8 @@ use std::mem;
 use std::os::unix::ffi::OsStrExt;
 use std::path::Path;
 
+use super::SocketStorage;
+
 pub struct SocketAddr {
     sockaddr: libc::sockaddr_un,
     socklen: libc::socklen_t,
@@ -106,5 +108,15 @@ impl<'a> fmt::Display for AsciiEscaped<'a> {
             write!(fmt, "{}", byte as char)?;
         }
         write!(fmt, "\"")
+    }
+}
+
+impl From<SocketStorage> for SocketAddr {
+    fn from(ss: SocketStorage) -> Self {
+        let mut storage = ss.storage.to_owned();
+        let socklen = ss.socklen;
+        let storage: *mut libc::sockaddr_storage = &mut storage as *mut _;
+        let sockaddr: libc::sockaddr_un = unsafe { *storage.cast() };
+        SocketAddr::from_parts(sockaddr, socklen)
     }
 }

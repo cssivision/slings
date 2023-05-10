@@ -1,4 +1,3 @@
-#![allow(clippy::type_complexity)]
 use std::cell::RefCell;
 use std::future::Future;
 use std::io;
@@ -10,7 +9,7 @@ use std::task::{ready, Context, Poll};
 
 use futures_core::stream::Stream;
 
-use super::Socket;
+use super::{Socket, SocketStorage};
 use crate::driver::{self, Op};
 
 pub(crate) struct Listener {
@@ -57,7 +56,7 @@ impl Listener {
     pub(crate) fn poll_accept(
         &self,
         cx: &mut Context<'_>,
-    ) -> Poll<io::Result<(Socket, Box<(libc::sockaddr_storage, libc::socklen_t)>)>> {
+    ) -> Poll<io::Result<(Socket, SocketStorage)>> {
         self.inner.borrow_mut().poll_accept(cx, self.io.as_raw_fd())
     }
 
@@ -92,7 +91,7 @@ impl Inner {
         &mut self,
         cx: &mut Context<'_>,
         fd: RawFd,
-    ) -> Poll<io::Result<(Socket, Box<(libc::sockaddr_storage, libc::socklen_t)>)>> {
+    ) -> Poll<io::Result<(Socket, SocketStorage)>> {
         loop {
             match &mut self.accept {
                 AcceptState::Idle => {
@@ -101,7 +100,13 @@ impl Inner {
                 AcceptState::Accepting(op) => {
                     let (socket, socketaddr) = ready!(Pin::new(op).poll(cx))?;
                     self.accept = AcceptState::Idle;
-                    return Poll::Ready(Ok((socket, socketaddr)));
+                    return Poll::Ready(Ok((
+                        socket,
+                        SocketStorage {
+                            storage: socketaddr.0,
+                            socklen: socketaddr.1,
+                        },
+                    )));
                 }
             }
         }
@@ -120,7 +125,7 @@ enum AcceptMultiState {
 }
 
 impl Stream for AcceptMulti {
-    type Item = io::Result<(Socket, SocketAddr)>;
+    type Item = io::Result<Socket>;
 
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         loop {
@@ -131,14 +136,12 @@ impl Stream for AcceptMulti {
                 AcceptMultiState::Accepting(op) => {
                     if let Some(res) = op.get_mut().next() {
                         let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
-                        let socket_addr = socket.peer_addr()?;
-                        return Poll::Ready(Some(Ok((socket, socket_addr))));
+                        return Poll::Ready(Some(Ok(socket)));
                     }
                     let res = ready!(Pin::new(op).poll(cx));
                     let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
-                    let socket_addr = socket.peer_addr()?;
                     self.state = AcceptMultiState::Done;
-                    return Poll::Ready(Some(Ok((socket, socket_addr))));
+                    return Poll::Ready(Some(Ok(socket)));
                 }
                 AcceptMultiState::Done => {
                     return Poll::Ready(None);

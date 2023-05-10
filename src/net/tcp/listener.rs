@@ -60,8 +60,8 @@ impl TcpListener {
         let (socket, socketaddr) = ready!(self.inner.poll_accept(cx))?;
         let (_, addr) = unsafe {
             SockAddr::try_init(move |addr_storage, len| {
-                *addr_storage = socketaddr.0.to_owned();
-                *len = socketaddr.1;
+                *addr_storage = socketaddr.storage.to_owned();
+                *len = socketaddr.socklen;
                 Ok(())
             })?
         };
@@ -86,7 +86,8 @@ impl Stream for AcceptMulti {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         match ready!(Pin::new(&mut self.inner).poll_next(cx)) {
             Some(item) => {
-                let (socket, socket_addr) = item?;
+                let socket = item?;
+                let socket_addr = socket.peer_addr()?;
                 Poll::Ready(Some(Ok((socket.into(), socket_addr))))
             }
             None => Poll::Ready(None),

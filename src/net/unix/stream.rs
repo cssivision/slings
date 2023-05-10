@@ -35,13 +35,13 @@ impl UnixStream {
     }
 
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
-        let socket = self.inner.get_ref().as_raw_fd();
-        SocketAddr::new(|sockaddr, socklen| syscall!(getsockname(socket, sockaddr, socklen)))
+        let fd = self.inner.get_ref().as_raw_fd();
+        SocketAddr::new(|sockaddr, socklen| syscall!(getsockname(fd, sockaddr, socklen)))
     }
 
     pub fn peer_addr(&self) -> io::Result<SocketAddr> {
-        let socket = self.inner.get_ref().as_raw_fd();
-        SocketAddr::new(|sockaddr, socklen| syscall!(getpeername(socket, sockaddr, socklen)))
+        let fd = self.inner.get_ref().as_raw_fd();
+        SocketAddr::new(|sockaddr, socklen| syscall!(getpeername(fd, sockaddr, socklen)))
     }
 }
 
