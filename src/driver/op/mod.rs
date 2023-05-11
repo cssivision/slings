@@ -3,6 +3,7 @@ mod accept_multi;
 mod connect;
 mod read;
 mod recv;
+mod recv_multi;
 mod recvmsg;
 mod send;
 mod sendmsg;
