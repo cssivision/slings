@@ -136,12 +136,26 @@ impl Stream for AcceptMulti {
                 }
                 AcceptMultiState::Accepting(op) => {
                     if let Some(res) = op.get_mut().next() {
-                        let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
+                        let fd = match res.result {
+                            Ok(fd) => fd as i32,
+                            Err(err) => {
+                                self.state = AcceptMultiState::Done;
+                                return Poll::Ready(Some(Err(err)));
+                            }
+                        };
+                        let socket = unsafe { Socket::from_raw_fd(fd) };
                         return Poll::Ready(Some(Ok(socket)));
                     }
                     let res = ready!(Pin::new(op).poll(cx));
-                    let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
-                    self.state = AcceptMultiState::Done;
+                    let fd = match res.result {
+                        Ok(fd) => fd as i32,
+                        Err(err) => {
+                            self.state = AcceptMultiState::Done;
+                            return Poll::Ready(Some(Err(err)));
+                        }
+                    };
+                    let socket = unsafe { Socket::from_raw_fd(fd) };
+                    self.state = AcceptMultiState::Idle;
                     return Poll::Ready(Some(Ok(socket)));
                 }
                 AcceptMultiState::Done => {
