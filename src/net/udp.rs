@@ -63,6 +63,10 @@ impl UdpSocket {
         poll_fn(|cx| self.inner.poll_recv(cx, buf)).await
     }
 
+    pub async fn recv2(&self, buf: &mut [u8]) -> io::Result<usize> {
+        poll_fn(|cx| self.inner.poll_recv2(cx, buf)).await
+    }
+
     pub async fn send(&self, buf: &[u8]) -> io::Result<usize> {
         poll_fn(|cx| self.inner.poll_send(cx, buf)).await
     }
@@ -84,8 +88,8 @@ impl UdpSocket {
         self.inner.poll_recv(cx, buf)
     }
 
-    pub fn poll_recv_multi(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
-        self.inner.poll_recv_multi(cx, buf)
+    pub fn poll_recv2(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.inner.poll_recv2(cx, buf)
     }
 
     pub fn poll_recv_from(

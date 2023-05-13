@@ -64,14 +64,10 @@ impl Packet {
             .poll_recv(cx, buf, self.io.as_raw_fd())
     }
 
-    pub(crate) fn poll_recv_multi(
-        &self,
-        cx: &mut Context,
-        buf: &mut [u8],
-    ) -> Poll<io::Result<usize>> {
+    pub(crate) fn poll_recv2(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
         self.inner
             .borrow_mut()
-            .poll_recv_multi(cx, buf, self.io.as_raw_fd())
+            .poll_recv2(cx, buf, self.io.as_raw_fd())
     }
 
     pub(crate) fn poll_recv_from(
@@ -197,7 +193,7 @@ impl Inner {
         }
     }
 
-    fn poll_recv_multi(
+    fn poll_recv2(
         &mut self,
         cx: &mut Context,
         buf: &mut [u8],
