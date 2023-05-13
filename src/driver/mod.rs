@@ -19,8 +19,8 @@ mod op;
 pub(crate) use op::*;
 
 pub const BUF_BGID: u16 = 666;
-const DEFAULT_RING_ENTRIES: u16 = 1024;
-const DEFAULT_BUF_CNT: u16 = 1024;
+const DEFAULT_RING_ENTRIES: u16 = 128;
+const DEFAULT_BUF_CNT: u16 = 128;
 const DEFAULT_BUF_LEN: usize = 4096;
 
 scoped_thread_local!(static CURRENT: Driver);
