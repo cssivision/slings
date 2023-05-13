@@ -267,10 +267,10 @@ impl InnerBufRing {
         re.set_bid(bid);
 
         // Also note, we have not updated the tail as far as the kernel is concerned.
-        // That is done with buf_ring_sync.
+        // That is done with sync.
     }
 
-    // Make 'local_tail' visible to the kernel. Called after buf_ring_push() has been
+    // Make 'local_tail' visible to the kernel. Called after push() has been
     // called to fill in new buffers.
     fn sync(&self) {
         unsafe {
