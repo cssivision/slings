@@ -12,7 +12,7 @@ use io_uring::types::BufRingEntry;
 type Bgid = u16; // Buffer group id
 type Bid = u16; // Buffer id
 
-// The Builder API for a FixedSizeBufRing.
+// The Builder API for a BufRing.
 #[derive(Copy, Clone)]
 pub(crate) struct Builder {
     bgid: Bgid,
@@ -59,7 +59,7 @@ impl Builder {
         self
     }
 
-    // Return a FixedSizeBufRing.
+    // Return a BufRing.
     pub fn build(&self) -> io::Result<BufRing> {
         let mut b: Builder = *self;
 
