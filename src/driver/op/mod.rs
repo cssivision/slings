@@ -16,6 +16,7 @@ pub(crate) use accept_multi::AcceptMulti;
 pub(crate) use connect::Connect;
 pub(crate) use read::Read;
 pub(crate) use recv::Recv;
+pub(crate) use recv_multi::RecvMulti;
 pub(crate) use recvmsg::RecvMsg;
 pub(crate) use send::Send;
 pub(crate) use sendmsg::SendMsg;

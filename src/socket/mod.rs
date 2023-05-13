@@ -3,7 +3,7 @@ pub(crate) mod packet;
 pub(crate) mod socketaddr;
 pub(crate) mod stream;
 
-pub(crate) use listener::{AcceptMulti, Listener};
+pub(crate) use listener::Listener;
 pub(crate) use packet::Packet;
 pub(crate) use stream::Stream;
 

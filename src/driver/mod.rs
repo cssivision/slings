@@ -12,7 +12,7 @@ use io_uring::{cqueue, opcode, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
-use crate::buffer::{BufRing, Builder};
+use crate::buffer::{BufRing, Builder, GBuf};
 
 mod op;
 
@@ -158,12 +158,11 @@ impl Inner {
         })
     }
 
-    fn get_buf(&self, result: u32, flags: u32) -> io::Result<Vec<u8>> {
+    fn get_buf(&self, result: u32, flags: u32) -> io::Result<GBuf> {
         let bid = cqueue::buffer_select(flags).unwrap();
-        println!("bid: {}", bid);
         let len = result as usize;
         let buf = self.bufgroup.get_buf(len, bid)?;
-        Ok(buf.as_slice().to_vec())
+        Ok(buf)
     }
 }
 
@@ -178,7 +177,7 @@ impl Driver {
         self.inner.borrow_mut().wait()
     }
 
-    pub(crate) fn get_buf(&self, result: u32, flags: u32) -> io::Result<Vec<u8>> {
+    pub(crate) fn get_buf(&self, result: u32, flags: u32) -> io::Result<GBuf> {
         self.inner.borrow().get_buf(result, flags)
     }
 
@@ -256,7 +255,7 @@ impl<T> Op<T> {
         self.op.as_mut().unwrap()
     }
 
-    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<Vec<u8>> {
+    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<GBuf> {
         let result = cqe.result?;
         let flags = cqe.flags;
         self.driver.get_buf(result, flags)

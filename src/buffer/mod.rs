@@ -14,7 +14,7 @@ type Bid = u16; // Buffer id
 
 // The Builder API for a FixedSizeBufRing.
 #[derive(Copy, Clone)]
-pub struct Builder {
+pub(crate) struct Builder {
     bgid: Bgid,
     ring_entries: u16,
     buf_cnt: u16,
@@ -95,7 +95,7 @@ impl Builder {
 // The BufRing is reference counted because each buffer handed
 // out has a reference back to its buffer ring.
 #[derive(Clone)]
-pub struct BufRing {
+pub(crate) struct BufRing {
     inner: Rc<InnerBufRing>,
 }
 
@@ -123,7 +123,7 @@ impl BufRing {
 
 // This tracks a buffer that has been filled in by the kernel, having gotten the memory
 // from a buffer ring, and returned to userland via a cqe entry.
-pub struct GBuf {
+pub(crate) struct GBuf {
     bufgroup: BufRing,
     len: usize,
     bid: Bid,
@@ -135,8 +135,12 @@ impl GBuf {
         Self { bufgroup, len, bid }
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.len
+    }
+
     // Return a byte slice reference.
-    pub fn as_slice(&self) -> &[u8] {
+    pub(crate) fn as_slice(&self) -> &[u8] {
         let p = self.bufgroup.inner.stable_ptr(self.bid);
         unsafe { std::slice::from_raw_parts(p, self.len) }
     }

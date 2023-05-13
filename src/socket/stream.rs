@@ -186,7 +186,8 @@ impl Inner {
                 }
                 ReadState::Reading(op) => {
                     let cqe = ready!(Pin::new(&mut *op).poll(cx));
-                    self.rd = op.get_buf(cqe)?;
+                    let buf = op.get_buf(cqe)?;
+                    self.rd = buf.as_slice().to_vec();
                     self.read = ReadState::Idle;
                     self.read_pos = 0;
                     if self.rd.is_empty() {
