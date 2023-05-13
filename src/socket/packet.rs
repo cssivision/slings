@@ -26,6 +26,7 @@ impl Packet {
                 send: SendState::Idle,
                 send_to: SendMsgState::Idle,
                 connect: ConnectState::Idle,
+                recv_multi: RecvMultiState::Idle,
             }),
         }
     }
@@ -63,6 +64,12 @@ impl Packet {
             .poll_recv(cx, buf, self.io.as_raw_fd())
     }
 
+    pub(crate) fn poll_recv2(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.inner
+            .borrow_mut()
+            .poll_recv2(cx, buf, self.io.as_raw_fd())
+    }
+
     pub(crate) fn poll_recv_from(
         &self,
         cx: &mut Context,
@@ -80,6 +87,7 @@ struct Inner {
     send: SendState,
     send_to: SendMsgState,
     connect: ConnectState,
+    recv_multi: RecvMultiState,
 }
 
 impl Inner {
@@ -184,6 +192,44 @@ impl Inner {
             }
         }
     }
+
+    fn poll_recv2(
+        &mut self,
+        cx: &mut Context,
+        buf: &mut [u8],
+        fd: RawFd,
+    ) -> Poll<io::Result<usize>> {
+        loop {
+            match &mut self.recv_multi {
+                RecvMultiState::Idle => {
+                    self.recv_multi = RecvMultiState::Recving(Op::recv_multi(fd)?);
+                }
+                RecvMultiState::Recving(op) => {
+                    if let Some(cqe) = op.get_mut().next() {
+                        let buf1 = op.get_buf(cqe).map_err(|err| {
+                            self.recv_multi = RecvMultiState::Done;
+                            err
+                        })?;
+                        let n = buf1.len();
+                        buf[..n].copy_from_slice(&buf1.as_slice()[..n]);
+                        return Poll::Ready(Ok(n));
+                    }
+                    let cqe = ready!(Pin::new(&mut *op).poll(cx));
+                    let buf1 = op.get_buf(cqe).map_err(|err| {
+                        self.recv_multi = RecvMultiState::Done;
+                        err
+                    })?;
+                    let n = buf1.len();
+                    buf[..n].copy_from_slice(&buf1.as_slice()[..n]);
+                    self.recv_multi = RecvMultiState::Idle;
+                    return Poll::Ready(Ok(n));
+                }
+                RecvMultiState::Done => {
+                    return Poll::Ready(Err(io::ErrorKind::ConnectionAborted.into()))
+                }
+            }
+        }
+    }
 }
 
 enum ConnectState {
@@ -210,4 +256,10 @@ enum RecvState {
 enum RecvMsgState {
     Idle,
     Recving(Op<driver::RecvMsg>),
+}
+
+enum RecvMultiState {
+    Idle,
+    Recving(Op<driver::RecvMulti>),
+    Done,
 }

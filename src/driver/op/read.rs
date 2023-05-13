@@ -1,29 +1,27 @@
 use std::io;
 use std::os::unix::io::RawFd;
+use std::ptr;
 
-use io_uring::{opcode, types};
+use io_uring::{opcode, squeue, types};
 
-use crate::driver::{Completable, CqeResult, Op};
+use crate::driver::{Completable, CqeResult, Op, BUF_BGID};
 
-pub(crate) struct Read {
-    buf: Vec<u8>,
-}
+pub(crate) struct Read;
 
 impl Op<Read> {
     pub(crate) fn read(fd: RawFd, len: u32) -> io::Result<Op<Read>> {
-        let buf = Vec::with_capacity(len as usize);
-        let mut read = Read { buf };
-        let entry = opcode::Read::new(types::Fd(fd), read.buf.as_mut_ptr(), len).build();
-        Op::submit(read, entry)
+        let entry = opcode::Read::new(types::Fd(fd), ptr::null_mut(), len)
+            .buf_group(BUF_BGID)
+            .build()
+            .flags(squeue::Flags::BUFFER_SELECT);
+        Op::submit(Read, entry)
     }
 }
 
 impl Completable for Read {
-    type Output = io::Result<Vec<u8>>;
+    type Output = CqeResult;
 
-    fn complete(mut self, cqe: CqeResult) -> Self::Output {
-        let n = cqe.result? as usize;
-        unsafe { self.buf.set_len(n) };
-        Ok(self.buf)
+    fn complete(self, cqe: CqeResult) -> Self::Output {
+        cqe
     }
 }

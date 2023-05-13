@@ -7,8 +7,6 @@ use std::path::Path;
 use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use futures_core::stream::Stream;
-
 use super::{Socket, SocketStorage};
 use crate::driver::{self, Op};
 
@@ -23,6 +21,7 @@ impl Listener {
             io,
             inner: RefCell::new(Inner {
                 accept: AcceptState::Idle,
+                accept_multi: AcceptMultiState::Idle,
             }),
         }
     }
@@ -46,18 +45,17 @@ impl Listener {
         Ok(Listener::new(socket))
     }
 
-    pub(crate) fn accept_multi(self) -> AcceptMulti {
-        AcceptMulti {
-            socket: self.io,
-            state: AcceptMultiState::Idle,
-        }
-    }
-
     pub(crate) fn poll_accept(
         &self,
         cx: &mut Context<'_>,
     ) -> Poll<io::Result<(Socket, SocketStorage)>> {
         self.inner.borrow_mut().poll_accept(cx, self.io.as_raw_fd())
+    }
+
+    pub(crate) fn poll_accept2(&self, cx: &mut Context<'_>) -> Poll<io::Result<Socket>> {
+        self.inner
+            .borrow_mut()
+            .poll_accept2(cx, self.io.as_raw_fd())
     }
 
     pub(crate) fn local_addr(&self) -> io::Result<SocketAddr> {
@@ -79,11 +77,18 @@ impl AsRawFd for Listener {
 
 struct Inner {
     accept: AcceptState,
+    accept_multi: AcceptMultiState,
 }
 
 enum AcceptState {
     Idle,
     Accepting(Op<driver::Accept>),
+}
+
+enum AcceptMultiState {
+    Idle,
+    Accepting(Op<driver::AcceptMulti>),
+    Done,
 }
 
 impl Inner {
@@ -111,41 +116,33 @@ impl Inner {
             }
         }
     }
-}
 
-pub(crate) struct AcceptMulti {
-    socket: Socket,
-    state: AcceptMultiState,
-}
-
-enum AcceptMultiState {
-    Idle,
-    Accepting(Op<driver::AcceptMulti>),
-    Done,
-}
-
-impl Stream for AcceptMulti {
-    type Item = io::Result<Socket>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+    pub fn poll_accept2(&mut self, cx: &mut Context<'_>, fd: RawFd) -> Poll<io::Result<Socket>> {
         loop {
-            match &mut self.state {
+            match &mut self.accept_multi {
                 AcceptMultiState::Idle => {
-                    self.state =
-                        AcceptMultiState::Accepting(Op::accept_multi(self.socket.as_raw_fd())?);
+                    self.accept_multi = AcceptMultiState::Accepting(Op::accept_multi(fd)?);
                 }
                 AcceptMultiState::Accepting(op) => {
                     if let Some(res) = op.get_mut().next() {
-                        let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
-                        return Poll::Ready(Some(Ok(socket)));
+                        let fd = res.result.map(|fd| fd as i32).map_err(|err| {
+                            self.accept_multi = AcceptMultiState::Done;
+                            err
+                        })?;
+                        let socket = unsafe { Socket::from_raw_fd(fd) };
+                        return Poll::Ready(Ok(socket));
                     }
                     let res = ready!(Pin::new(op).poll(cx));
-                    let socket = unsafe { Socket::from_raw_fd(res.result? as i32) };
-                    self.state = AcceptMultiState::Done;
-                    return Poll::Ready(Some(Ok(socket)));
+                    let fd = res.result.map(|fd| fd as i32).map_err(|err| {
+                        self.accept_multi = AcceptMultiState::Done;
+                        err
+                    })?;
+                    let socket = unsafe { Socket::from_raw_fd(fd) };
+                    self.accept_multi = AcceptMultiState::Idle;
+                    return Poll::Ready(Ok(socket));
                 }
                 AcceptMultiState::Done => {
-                    return Poll::Ready(None);
+                    return Poll::Ready(Err(io::ErrorKind::ConnectionAborted.into()));
                 }
             }
         }

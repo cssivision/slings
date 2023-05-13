@@ -63,6 +63,10 @@ impl UdpSocket {
         poll_fn(|cx| self.inner.poll_recv(cx, buf)).await
     }
 
+    pub async fn recv2(&self, buf: &mut [u8]) -> io::Result<usize> {
+        poll_fn(|cx| self.inner.poll_recv2(cx, buf)).await
+    }
+
     pub async fn send(&self, buf: &[u8]) -> io::Result<usize> {
         poll_fn(|cx| self.inner.poll_send(cx, buf)).await
     }
@@ -71,17 +75,29 @@ impl UdpSocket {
         poll_fn(|cx| self.inner.poll_recv_from(cx, buf)).await
     }
 
+    pub async fn send_to<A: Into<SocketAddr>>(&self, buf: &[u8], target: A) -> io::Result<usize> {
+        let addr = target.into();
+        poll_fn(|cx| self.inner.poll_send_to(cx, buf, addr)).await
+    }
+
+    pub fn poll_send(&self, cx: &mut Context, buf: &[u8]) -> Poll<io::Result<usize>> {
+        self.inner.poll_send(cx, buf)
+    }
+
+    pub fn poll_recv(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.inner.poll_recv(cx, buf)
+    }
+
+    pub fn poll_recv2(&self, cx: &mut Context, buf: &mut [u8]) -> Poll<io::Result<usize>> {
+        self.inner.poll_recv2(cx, buf)
+    }
+
     pub fn poll_recv_from(
         &self,
         cx: &mut Context<'_>,
         buf: &mut [u8],
     ) -> Poll<io::Result<(usize, SocketAddr)>> {
         self.inner.poll_recv_from(cx, buf)
-    }
-
-    pub async fn send_to<A: Into<SocketAddr>>(&self, buf: &[u8], target: A) -> io::Result<usize> {
-        let addr = target.into();
-        poll_fn(|cx| self.inner.poll_send_to(cx, buf, addr)).await
     }
 
     pub fn poll_send_to<A: Into<SocketAddr>>(

@@ -3,10 +3,7 @@ use std::io;
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
 use std::os::unix::net;
 use std::path::Path;
-use std::pin::Pin;
 use std::task::{ready, Context, Poll};
-
-use futures_core::stream::Stream;
 
 use super::UnixStream;
 use crate::socket::{self, socketaddr::SocketAddr, Socket};
@@ -29,10 +26,16 @@ impl UnixListener {
         poll_fn(|cx| self.poll_accept(cx)).await
     }
 
-    pub fn accept_multi(self) -> impl Stream<Item = io::Result<(UnixStream, SocketAddr)>> {
-        AcceptMulti {
-            inner: self.inner.accept_multi(),
-        }
+    pub async fn accept2(&self) -> io::Result<(UnixStream, SocketAddr)> {
+        poll_fn(|cx| self.poll_accept2(cx)).await
+    }
+
+    pub fn poll_accept2(&self, cx: &mut Context<'_>) -> Poll<io::Result<(UnixStream, SocketAddr)>> {
+        let socket = ready!(self.inner.poll_accept2(cx))?;
+        let addr = SocketAddr::new(|sockaddr, socklen| {
+            syscall!(getsockname(socket.as_raw_fd(), sockaddr, socklen))
+        })?;
+        Poll::Ready(Ok((socket.into(), addr)))
     }
 
     pub fn poll_accept(&self, cx: &mut Context<'_>) -> Poll<io::Result<(UnixStream, SocketAddr)>> {
@@ -49,26 +52,6 @@ impl UnixListener {
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         let socket = self.inner.as_raw_fd();
         SocketAddr::new(|sockaddr, socklen| syscall!(getsockname(socket, sockaddr, socklen)))
-    }
-}
-
-struct AcceptMulti {
-    inner: socket::AcceptMulti,
-}
-
-impl Stream for AcceptMulti {
-    type Item = io::Result<(UnixStream, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(Pin::new(&mut self.inner).poll_next(cx)) {
-            Some(item) => {
-                let socket = item?;
-                let stream: UnixStream = socket.into();
-                let socket_addr = stream.peer_addr()?;
-                Poll::Ready(Some(Ok((stream, socket_addr))))
-            }
-            None => Poll::Ready(None),
-        }
     }
 }
 

@@ -2,10 +2,8 @@ use std::future::poll_fn;
 use std::io;
 use std::net::{self, SocketAddr, ToSocketAddrs};
 use std::os::unix::io::{AsRawFd, FromRawFd, IntoRawFd, RawFd};
-use std::pin::Pin;
 use std::task::{ready, Context, Poll};
 
-use futures_core::stream::Stream;
 use socket2::SockAddr;
 
 use super::stream::TcpStream;
@@ -50,10 +48,8 @@ impl TcpListener {
         poll_fn(|cx| self.poll_accept(cx)).await
     }
 
-    pub fn accept_multi(self) -> impl Stream<Item = io::Result<(TcpStream, SocketAddr)>> {
-        AcceptMulti {
-            inner: self.inner.accept_multi(),
-        }
+    pub async fn accept2(&self) -> io::Result<(TcpStream, SocketAddr)> {
+        poll_fn(|cx| self.poll_accept2(cx)).await
     }
 
     pub fn poll_accept(&self, cx: &mut Context<'_>) -> Poll<io::Result<(TcpStream, SocketAddr)>> {
@@ -71,27 +67,14 @@ impl TcpListener {
         Poll::Ready(Ok((socket.into(), socket_addr)))
     }
 
+    pub fn poll_accept2(&self, cx: &mut Context<'_>) -> Poll<io::Result<(TcpStream, SocketAddr)>> {
+        let socket = ready!(self.inner.poll_accept2(cx))?;
+        let addr = socket.peer_addr()?;
+        Poll::Ready(Ok((socket.into(), addr)))
+    }
+
     pub fn local_addr(&self) -> io::Result<SocketAddr> {
         self.inner.local_addr()
-    }
-}
-
-struct AcceptMulti {
-    inner: socket::AcceptMulti,
-}
-
-impl Stream for AcceptMulti {
-    type Item = io::Result<(TcpStream, SocketAddr)>;
-
-    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        match ready!(Pin::new(&mut self.inner).poll_next(cx)) {
-            Some(item) => {
-                let socket = item?;
-                let socket_addr = socket.peer_addr()?;
-                Poll::Ready(Some(Ok((socket.into(), socket_addr))))
-            }
-            None => Poll::Ready(None),
-        }
     }
 }
 

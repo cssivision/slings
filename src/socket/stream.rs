@@ -10,7 +10,7 @@ use socket2::SockAddr;
 use super::Socket;
 use crate::driver::{self, Op};
 
-const DEFAULT_BUFFER_SIZE: usize = 4096;
+const DEFAULT_BUFFER_SIZE: u32 = 4096;
 
 pub(crate) struct Stream {
     inner: Inner,
@@ -165,7 +165,7 @@ impl Inner {
                     self.write = WriteState::Writing(Op::write(fd, buf)?);
                 }
                 WriteState::Writing(op) => {
-                    let n = ready!(Pin::new(op).poll(cx))?;
+                    let n = ready!(Pin::new(&mut *op).poll(cx))?;
                     self.write = WriteState::Idle;
                     return Poll::Ready(Ok(n));
                 }
@@ -182,10 +182,12 @@ impl Inner {
                     }
                     self.read_pos = 0;
                     self.rd = vec![];
-                    self.read = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE as u32)?);
+                    self.read = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE)?);
                 }
                 ReadState::Reading(op) => {
-                    self.rd = ready!(Pin::new(op).poll(cx))?;
+                    let cqe = ready!(Pin::new(&mut *op).poll(cx));
+                    let buf = op.get_buf(cqe)?;
+                    self.rd = buf.as_slice().to_vec();
                     self.read = ReadState::Idle;
                     self.read_pos = 0;
                     if self.rd.is_empty() {

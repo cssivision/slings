@@ -12,9 +12,16 @@ use io_uring::{cqueue, opcode, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
+use crate::buffer::{BufRing, Builder, GBuf};
+
 mod op;
 
 pub(crate) use op::*;
+
+pub const BUF_BGID: u16 = 666;
+const DEFAULT_RING_ENTRIES: u16 = 10;
+const DEFAULT_BUF_CNT: u16 = 10;
+const DEFAULT_BUF_LEN: usize = 4096;
 
 scoped_thread_local!(static CURRENT: Driver);
 
@@ -31,11 +38,77 @@ impl Clone for Driver {
 }
 
 struct Inner {
+    bufgroup: BufRing,
     ring: IoUring,
     ops: Slab<State>,
 }
 
 impl Inner {
+    fn new() -> io::Result<Inner> {
+        let ring = IoUring::new(256)?;
+        let bufgroup = Builder::new(BUF_BGID)
+            .ring_entries(DEFAULT_RING_ENTRIES)
+            .buf_cnt(DEFAULT_BUF_CNT)
+            .buf_len(DEFAULT_BUF_LEN)
+            .build()?;
+        let mut inner = Inner {
+            ring,
+            ops: Slab::with_capacity(256),
+            bufgroup,
+        };
+        inner.register_buf_ring()?;
+        Ok(inner)
+    }
+
+    fn register_buf_ring(&mut self) -> io::Result<()> {
+        // Safety: The ring, represented by the ring_start and the ring_entries remains valid until
+        // it is unregistered. The backing store is an AnonymousMmap which remains valid until it
+        // is dropped which in this case, is when Self is dropped.
+        let res = unsafe {
+            self.ring.submitter().register_buf_ring(
+                self.bufgroup.as_ptr() as _,
+                self.bufgroup.ring_entries(),
+                self.bufgroup.bgid(),
+            )
+        };
+
+        if let Err(e) = res {
+            match e.raw_os_error() {
+                Some(libc::EINVAL) => {
+                    // using buf_ring requires kernel 5.19 or greater.
+                    return Err(io::Error::new(
+                            io::ErrorKind::Other, format!(
+                                "buf_ring.register returned {}, most likely indicating this kernel is not 5.19+", e),
+                            ));
+                }
+                Some(libc::EEXIST) => {
+                    // Registering a duplicate bgid is not allowed. There is an `unregister`
+                    // operations that can remove the first, but care must be taken that there
+                    // are no outstanding operations that will still return a buffer from that
+                    // one.
+                    return Err(io::Error::new(
+                            io::ErrorKind::Other,
+                            format!(
+                                "buf_ring.register returned `{}`, indicating the attempted buffer group id {} was already registered",
+                            e,
+                            self.bufgroup.bgid()),
+                        ));
+                }
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Other,
+                        format!(
+                            "buf_ring.register returned `{}` for group id {}",
+                            e,
+                            self.bufgroup.bgid()
+                        ),
+                    ));
+                }
+            }
+        };
+        res
+    }
+
     fn submit(&mut self, sqe: Entry) -> io::Result<()> {
         if self.ring.submission().is_full() {
             self.ring.submit()?;
@@ -47,25 +120,9 @@ impl Inner {
         self.ring.submit()?;
         Ok(())
     }
-}
 
-impl Driver {
-    pub(crate) fn new() -> io::Result<Driver> {
-        let ring = IoUring::new(256)?;
-        let driver = Driver {
-            inner: Rc::new(RefCell::new(Inner {
-                ring,
-                ops: Slab::with_capacity(256),
-            })),
-        };
-        Ok(driver)
-    }
-
-    pub(crate) fn wait(&self) -> io::Result<()> {
-        let inner = &mut *self.inner.borrow_mut();
-        let ring = &mut inner.ring;
-
-        if let Err(e) = ring.submit_and_wait(1) {
+    fn wait(&mut self) -> io::Result<()> {
+        if let Err(e) = self.ring.submit_and_wait(1) {
             if e.raw_os_error() == Some(libc::EBUSY) {
                 return Ok(());
             }
@@ -75,19 +132,53 @@ impl Driver {
             return Err(e);
         }
 
-        let mut cq = ring.completion();
+        let mut cq = self.ring.completion();
         cq.sync();
         for cqe in cq {
             if cqe.user_data() == u64::MAX {
                 continue;
             }
             let index = cqe.user_data() as _;
-            let op = &mut inner.ops[index];
+            let op = &mut self.ops[index];
             if op.complete(cqe) {
-                inner.ops.remove(index);
+                self.ops.remove(index);
             }
         }
         Ok(())
+    }
+
+    fn submit_op<T>(&mut self, driver: Driver, op: T, sqe: Entry) -> io::Result<Op<T>> {
+        let key = self.ops.insert(State::Submitted);
+        let sqe = sqe.user_data(key as u64);
+        self.submit(sqe)?;
+        Ok(Op {
+            driver,
+            op: Some(op),
+            key,
+        })
+    }
+
+    fn get_buf(&self, result: u32, flags: u32) -> io::Result<GBuf> {
+        let bid = cqueue::buffer_select(flags).unwrap();
+        let len = result as usize;
+        let buf = self.bufgroup.get_buf(len, bid)?;
+        Ok(buf)
+    }
+}
+
+impl Driver {
+    pub(crate) fn new() -> io::Result<Driver> {
+        Ok(Driver {
+            inner: Rc::new(RefCell::new(Inner::new()?)),
+        })
+    }
+
+    pub(crate) fn wait(&self) -> io::Result<()> {
+        self.inner.borrow_mut().wait()
+    }
+
+    pub(crate) fn get_buf(&self, result: u32, flags: u32) -> io::Result<GBuf> {
+        self.inner.borrow().get_buf(result, flags)
     }
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
@@ -95,16 +186,7 @@ impl Driver {
     }
 
     pub(crate) fn submit<T>(&self, op: T, sqe: Entry) -> io::Result<Op<T>> {
-        let mut inner = self.inner.borrow_mut();
-        let inner = &mut *inner;
-        let key = inner.ops.insert(State::Submitted);
-        let sqe = sqe.user_data(key as u64);
-        inner.submit(sqe)?;
-        Ok(Op {
-            driver: self.clone(),
-            op: Some(op),
-            key,
-        })
+        self.inner.borrow_mut().submit_op(self.clone(), op, sqe)
     }
 }
 
@@ -171,6 +253,12 @@ pub(crate) struct Op<T: 'static> {
 impl<T> Op<T> {
     pub(crate) fn get_mut(&mut self) -> &mut T {
         self.op.as_mut().unwrap()
+    }
+
+    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<GBuf> {
+        let result = cqe.result?;
+        let flags = cqe.flags;
+        self.driver.get_buf(result, flags)
     }
 
     pub(crate) fn submit(op: T, entry: Entry) -> io::Result<Op<T>> {

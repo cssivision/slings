@@ -12,6 +12,9 @@ fn main() -> io::Result<()> {
         loop {
             let (n, addr) = socket.recv_from(&mut buf).await?;
             println!("recv bytes {:?} from {}", &buf[..n], addr);
+            let buf = b"helloworld";
+            let n = socket.send_to(buf, addr).await?;
+            println!("send {} bytes", n);
             delay_for(Duration::from_secs(1)).await;
         }
     })
