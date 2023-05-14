@@ -2,6 +2,7 @@ use std::cell::Cell;
 use std::fmt;
 use std::io;
 use std::mem;
+use std::ops::{Deref, DerefMut};
 use std::ptr;
 use std::rc::Rc;
 use std::sync::atomic;
@@ -135,12 +136,14 @@ impl GBuf {
         Self { bufgroup, len, bid }
     }
 
-    pub(crate) fn len(&self) -> usize {
-        self.len
+    // Return a byte slice reference.
+    fn as_slice_mut(&mut self) -> &mut [u8] {
+        let p = self.bufgroup.inner.stable_ptr(self.bid);
+        unsafe { std::slice::from_raw_parts_mut(p as *mut _, self.len) }
     }
 
     // Return a byte slice reference.
-    pub(crate) fn as_slice(&self) -> &[u8] {
+    fn as_slice(&self) -> &[u8] {
         let p = self.bufgroup.inner.stable_ptr(self.bid);
         unsafe { std::slice::from_raw_parts(p, self.len) }
     }
@@ -154,6 +157,20 @@ impl fmt::Debug for GBuf {
             .field("len", &self.len)
             .field("cap", &self.bufgroup.inner.buf_capacity())
             .finish()
+    }
+}
+
+impl Deref for GBuf {
+    type Target = [u8];
+
+    fn deref(&self) -> &Self::Target {
+        self.as_slice()
+    }
+}
+
+impl DerefMut for GBuf {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.as_slice_mut()
     }
 }
 

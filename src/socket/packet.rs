@@ -211,7 +211,7 @@ impl Inner {
                             err
                         })?;
                         let n = buf1.len();
-                        buf[..n].copy_from_slice(&buf1.as_slice()[..n]);
+                        buf[..n].copy_from_slice(&buf1[..n]);
                         return Poll::Ready(Ok(n));
                     }
                     let cqe = ready!(Pin::new(&mut *op).poll(cx));
@@ -220,7 +220,7 @@ impl Inner {
                         err
                     })?;
                     let n = buf1.len();
-                    buf[..n].copy_from_slice(&buf1.as_slice()[..n]);
+                    buf[..n].copy_from_slice(&buf1[..n]);
                     self.recv_multi = RecvMultiState::Idle;
                     return Poll::Ready(Ok(n));
                 }

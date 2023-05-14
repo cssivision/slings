@@ -8,6 +8,7 @@ use std::task::{ready, Context, Poll};
 use socket2::SockAddr;
 
 use super::Socket;
+use crate::buffer::GBuf;
 use crate::driver::{self, Op};
 
 const DEFAULT_BUFFER_SIZE: u32 = 4096;
@@ -22,9 +23,11 @@ impl Stream {
         Stream {
             io,
             inner: Inner {
-                read_pos: 0,
-                rd: vec![],
-                read: ReadState::Idle,
+                read: Read {
+                    pos: 0,
+                    buf: None,
+                    state: ReadState::Idle,
+                },
                 write: WriteState::Idle,
                 shutdown: ShutdownState::Idle,
                 connect: ConnectState::Idle,
@@ -83,9 +86,7 @@ impl Stream {
 }
 
 struct Inner {
-    rd: Vec<u8>,
-    read_pos: usize,
-    read: ReadState,
+    read: Read,
     write: WriteState,
     shutdown: ShutdownState,
     connect: ConnectState,
@@ -105,6 +106,46 @@ enum WriteState {
 enum ReadState {
     Idle,
     Reading(Op<driver::Read>),
+}
+
+struct Read {
+    buf: Option<GBuf>,
+    pos: usize,
+    state: ReadState,
+}
+
+impl Read {
+    fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
+        loop {
+            match &mut self.state {
+                ReadState::Idle => {
+                    if self.buf.is_some() {
+                        if !self.buf.as_ref().unwrap()[self.pos..].is_empty() {
+                            return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[self.pos..]));
+                        }
+                    }
+                    self.pos = 0;
+                    self.buf = None;
+                    self.state = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE)?);
+                }
+                ReadState::Reading(op) => {
+                    let cqe = ready!(Pin::new(&mut *op).poll(cx));
+                    let buf = op.get_buf(cqe)?;
+                    self.state = ReadState::Idle;
+                    self.pos = 0;
+                    self.buf = Some(buf);
+                    // if length of buf is zero, return
+                    if self.buf.as_ref().unwrap().is_empty() {
+                        return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[..]));
+                    }
+                }
+            }
+        }
+    }
+
+    fn consume(&mut self, amt: usize) {
+        self.pos += amt;
+    }
 }
 
 enum ShutdownState {
@@ -174,31 +215,10 @@ impl Inner {
     }
 
     fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
-        loop {
-            match &mut self.read {
-                ReadState::Idle => {
-                    if !self.rd[self.read_pos..].is_empty() {
-                        return Poll::Ready(Ok(&self.rd[self.read_pos..]));
-                    }
-                    self.read_pos = 0;
-                    self.rd = vec![];
-                    self.read = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE)?);
-                }
-                ReadState::Reading(op) => {
-                    let cqe = ready!(Pin::new(&mut *op).poll(cx));
-                    let buf = op.get_buf(cqe)?;
-                    self.rd = buf.as_slice().to_vec();
-                    self.read = ReadState::Idle;
-                    self.read_pos = 0;
-                    if self.rd.is_empty() {
-                        return Poll::Ready(Ok(&self.rd[..]));
-                    }
-                }
-            }
-        }
+        self.read.poll_fill_buf(cx, fd)
     }
 
     fn consume(&mut self, amt: usize) {
-        self.read_pos += amt;
+        self.read.consume(amt);
     }
 }
