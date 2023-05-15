@@ -12,7 +12,7 @@ use io_uring::{cqueue, opcode, IoUring};
 use scoped_tls::scoped_thread_local;
 use slab::Slab;
 
-use crate::buffer::{BufRing, Builder, GBuf};
+use crate::buffer::{Buf, BufRing, Builder};
 
 mod op;
 
@@ -158,7 +158,7 @@ impl Inner {
         })
     }
 
-    fn get_buf(&self, result: u32, flags: u32) -> io::Result<GBuf> {
+    fn get_buf(&self, result: u32, flags: u32) -> io::Result<Buf> {
         let bid = cqueue::buffer_select(flags).unwrap();
         let len = result as usize;
         let buf = self.bufgroup.get_buf(len, bid)?;
@@ -177,7 +177,7 @@ impl Driver {
         self.inner.borrow_mut().wait()
     }
 
-    pub(crate) fn get_buf(&self, result: u32, flags: u32) -> io::Result<GBuf> {
+    pub(crate) fn get_buf(&self, result: u32, flags: u32) -> io::Result<Buf> {
         self.inner.borrow().get_buf(result, flags)
     }
 
@@ -255,7 +255,7 @@ impl<T> Op<T> {
         self.op.as_mut().unwrap()
     }
 
-    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<GBuf> {
+    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
         let result = cqe.result?;
         let flags = cqe.flags;
         self.driver.get_buf(result, flags)

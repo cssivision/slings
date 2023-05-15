@@ -8,7 +8,7 @@ use std::task::{ready, Context, Poll};
 use socket2::SockAddr;
 
 use super::Socket;
-use crate::buffer::GBuf;
+use crate::buffer::Buf;
 use crate::driver::{self, Op};
 
 const DEFAULT_BUFFER_SIZE: u32 = 4096;
@@ -109,7 +109,7 @@ enum ReadState {
 }
 
 struct Read {
-    buf: Option<GBuf>,
+    buf: Option<Buf>,
     pos: usize,
     state: ReadState,
 }

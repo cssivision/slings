@@ -103,7 +103,7 @@ pub(crate) struct BufRing {
 impl BufRing {
     // Returns the buffer the uring interface picked from the buf_ring for the completion result
     // represented by the res and flags.
-    pub fn get_buf(&self, len: usize, bid: u16) -> io::Result<GBuf> {
+    pub fn get_buf(&self, len: usize, bid: u16) -> io::Result<Buf> {
         self.inner.get_buf(self.clone(), len, bid)
     }
 
@@ -124,13 +124,13 @@ impl BufRing {
 
 // This tracks a buffer that has been filled in by the kernel, having gotten the memory
 // from a buffer ring, and returned to userland via a cqe entry.
-pub(crate) struct GBuf {
+pub(crate) struct Buf {
     bufgroup: BufRing,
     len: usize,
     bid: Bid,
 }
 
-impl GBuf {
+impl Buf {
     fn new(bufgroup: BufRing, bid: Bid, len: usize) -> Self {
         assert!(len <= bufgroup.inner.buf_capacity());
         Self { bufgroup, len, bid }
@@ -149,9 +149,9 @@ impl GBuf {
     }
 }
 
-impl fmt::Debug for GBuf {
+impl fmt::Debug for Buf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("GBuf")
+        f.debug_struct("Buf")
             .field("bgid", &self.bufgroup.inner.bgid())
             .field("bid", &self.bid)
             .field("len", &self.len)
@@ -160,7 +160,7 @@ impl fmt::Debug for GBuf {
     }
 }
 
-impl Deref for GBuf {
+impl Deref for Buf {
     type Target = [u8];
 
     fn deref(&self) -> &Self::Target {
@@ -168,13 +168,13 @@ impl Deref for GBuf {
     }
 }
 
-impl DerefMut for GBuf {
+impl DerefMut for Buf {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.as_slice_mut()
     }
 }
 
-impl Drop for GBuf {
+impl Drop for Buf {
     fn drop(&mut self) {
         // Add the buffer back to the bufgroup, for the kernel to reuse.
         unsafe { self.bufgroup.inner.dropping_bid(self.bid) };
@@ -325,12 +325,12 @@ impl InnerBufRing {
 
     // Returns the buffer the uring interface picked from the buf_ring for the completion result
     // represented by the res and flags.
-    fn get_buf(&self, buf_ring: BufRing, len: usize, bid: u16) -> io::Result<GBuf> {
+    fn get_buf(&self, buf_ring: BufRing, len: usize, bid: u16) -> io::Result<Buf> {
         // This fn does the odd thing of having self as the BufRing and taking an argument that is
         // the same BufRing but wrapped in Rc<_> so the wrapped buf_ring can be passed to the
-        // outgoing GBuf.
+        // outgoing Buf.
         assert!(len <= self.buf_len);
-        Ok(GBuf::new(buf_ring, bid, len))
+        Ok(Buf::new(buf_ring, bid, len))
     }
 }
 
