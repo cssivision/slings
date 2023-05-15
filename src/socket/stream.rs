@@ -119,10 +119,8 @@ impl Read {
         loop {
             match &mut self.state {
                 ReadState::Idle => {
-                    if self.buf.is_some() {
-                        if !self.buf.as_ref().unwrap()[self.pos..].is_empty() {
-                            return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[self.pos..]));
-                        }
+                    if self.buf.is_some() && !self.buf.as_ref().unwrap()[self.pos..].is_empty() {
+                        return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[self.pos..]));
                     }
                     self.pos = 0;
                     self.buf = None;
@@ -134,7 +132,7 @@ impl Read {
                     self.state = ReadState::Idle;
                     self.pos = 0;
                     self.buf = Some(buf);
-                    // if length of buf is zero, return
+                    // if length of buf is zero, means EOF.
                     if self.buf.as_ref().unwrap().is_empty() {
                         return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[..]));
                     }
