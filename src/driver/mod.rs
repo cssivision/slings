@@ -140,7 +140,7 @@ impl Inner {
             }
             let index = cqe.user_data() as _;
             let op = &mut self.ops[index];
-            if op.complete(cqe) {
+            if op.complete(cqe, &self.bufgroup) {
                 self.ops.remove(index);
             }
         }
@@ -158,11 +158,22 @@ impl Inner {
         })
     }
 
-    fn get_buf(&self, result: u32, flags: u32) -> io::Result<Buf> {
-        let bid = cqueue::buffer_select(flags).unwrap();
-        let len = result as usize;
-        let buf = self.bufgroup.get_buf(len, bid)?;
-        Ok(buf)
+    fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
+        let bid = cqueue::buffer_select(cqe.flags);
+        let len = cqe.result.map(|v| v as usize).map_err(|err| {
+            // io-uring may set flag even encounter error.
+            // so we should recycle the buf.
+            if let Some(bid) = bid {
+                self.bufgroup.dropping_bid(bid);
+            }
+            err
+        })?;
+        let bid = if let Some(bid) = bid {
+            bid
+        } else {
+            return Err(io::Error::new(io::ErrorKind::Other, "bid not found"));
+        };
+        self.bufgroup.get_buf(len, bid)
     }
 }
 
@@ -177,8 +188,8 @@ impl Driver {
         self.inner.borrow_mut().wait()
     }
 
-    pub(crate) fn get_buf(&self, result: u32, flags: u32) -> io::Result<Buf> {
-        self.inner.borrow().get_buf(result, flags)
+    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
+        self.inner.borrow().get_buf(cqe)
     }
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
@@ -204,7 +215,7 @@ enum State {
 }
 
 impl State {
-    fn complete(&mut self, cqe: cqueue::Entry) -> bool {
+    fn complete(&mut self, cqe: cqueue::Entry, bufgroup: &BufRing) -> bool {
         match mem::replace(self, State::Submitted) {
             s @ State::Submitted | s @ State::Waiting(..) => {
                 if io_uring::cqueue::more(cqe.flags()) {
@@ -218,6 +229,11 @@ impl State {
                 false
             }
             s @ State::Ignored(..) => {
+                if let Some(bid) = cqueue::buffer_select(cqe.flags()) {
+                    // because we had dropped the opcode, if io-uring
+                    // set the flag, we should recycle the buf.
+                    bufgroup.dropping_bid(bid);
+                }
                 if io_uring::cqueue::more(cqe.flags()) {
                     *self = s;
                     false
@@ -256,9 +272,7 @@ impl<T> Op<T> {
     }
 
     pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
-        let result = cqe.result?;
-        let flags = cqe.flags;
-        self.driver.get_buf(result, flags)
+        self.driver.get_buf(cqe)
     }
 
     pub(crate) fn submit(op: T, entry: Entry) -> io::Result<Op<T>> {

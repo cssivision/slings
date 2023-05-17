@@ -120,6 +120,10 @@ impl BufRing {
     pub fn as_ptr(&self) -> *const libc::c_void {
         self.inner.ring_start.as_ptr()
     }
+
+    pub fn dropping_bid(&self, bid: Bid) {
+        self.inner.dropping_bid(bid);
+    }
 }
 
 // This tracks a buffer that has been filled in by the kernel, having gotten the memory
@@ -177,7 +181,7 @@ impl DerefMut for Buf {
 impl Drop for Buf {
     fn drop(&mut self) {
         // Add the buffer back to the bufgroup, for the kernel to reuse.
-        unsafe { self.bufgroup.inner.dropping_bid(self.bid) };
+        self.bufgroup.inner.dropping_bid(self.bid);
     }
 }
 
@@ -297,7 +301,7 @@ impl InnerBufRing {
 
     // Safety: dropping a duplicate bid is likely to cause undefined behavior
     // as the kernel could use the same buffer for different data concurrently.
-    unsafe fn dropping_bid(&self, bid: Bid) {
+    fn dropping_bid(&self, bid: Bid) {
         self.push(bid);
         self.sync();
     }
