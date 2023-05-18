@@ -129,26 +129,26 @@ impl BufRing {
 // This tracks a buffer that has been filled in by the kernel, having gotten the memory
 // from a buffer ring, and returned to userland via a cqe entry.
 pub(crate) struct Buf {
-    bufgroup: BufRing,
+    buf_ring: BufRing,
     len: usize,
     bid: Bid,
 }
 
 impl Buf {
-    fn new(bufgroup: BufRing, bid: Bid, len: usize) -> Self {
-        assert!(len <= bufgroup.inner.buf_capacity());
-        Self { bufgroup, len, bid }
+    fn new(buf_ring: BufRing, bid: Bid, len: usize) -> Self {
+        assert!(len <= buf_ring.inner.buf_capacity());
+        Self { buf_ring, len, bid }
     }
 
     // Return a byte slice reference.
     fn as_slice_mut(&mut self) -> &mut [u8] {
-        let p = self.bufgroup.inner.stable_ptr(self.bid);
+        let p = self.buf_ring.inner.stable_ptr(self.bid);
         unsafe { std::slice::from_raw_parts_mut(p as *mut _, self.len) }
     }
 
     // Return a byte slice reference.
     fn as_slice(&self) -> &[u8] {
-        let p = self.bufgroup.inner.stable_ptr(self.bid);
+        let p = self.buf_ring.inner.stable_ptr(self.bid);
         unsafe { std::slice::from_raw_parts(p, self.len) }
     }
 }
@@ -156,10 +156,10 @@ impl Buf {
 impl fmt::Debug for Buf {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Buf")
-            .field("bgid", &self.bufgroup.inner.bgid())
+            .field("bgid", &self.buf_ring.inner.bgid())
             .field("bid", &self.bid)
             .field("len", &self.len)
-            .field("cap", &self.bufgroup.inner.buf_capacity())
+            .field("cap", &self.buf_ring.inner.buf_capacity())
             .finish()
     }
 }
@@ -180,8 +180,8 @@ impl DerefMut for Buf {
 
 impl Drop for Buf {
     fn drop(&mut self) {
-        // Add the buffer back to the bufgroup, for the kernel to reuse.
-        self.bufgroup.inner.dropping_bid(self.bid);
+        // Add the buffer back to the buf_ring, for the kernel to reuse.
+        self.buf_ring.inner.dropping_bid(self.bid);
     }
 }
 

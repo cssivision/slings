@@ -38,7 +38,7 @@ impl Clone for Driver {
 }
 
 struct Inner {
-    bufgroup: BufRing,
+    buf_ring: BufRing,
     ring: IoUring,
     ops: Slab<Lifecycle>,
 }
@@ -46,7 +46,7 @@ struct Inner {
 impl Inner {
     fn new() -> io::Result<Inner> {
         let ring = IoUring::new(256)?;
-        let bufgroup = Builder::new(BUF_BGID)
+        let buf_ring = Builder::new(BUF_BGID)
             .ring_entries(DEFAULT_RING_ENTRIES)
             .buf_cnt(DEFAULT_BUF_CNT)
             .buf_len(DEFAULT_BUF_LEN)
@@ -54,7 +54,7 @@ impl Inner {
         let mut inner = Inner {
             ring,
             ops: Slab::with_capacity(256),
-            bufgroup,
+            buf_ring,
         };
         inner.register_buf_ring()?;
         Ok(inner)
@@ -66,9 +66,9 @@ impl Inner {
         // is dropped which in this case, is when Self is dropped.
         let res = unsafe {
             self.ring.submitter().register_buf_ring(
-                self.bufgroup.as_ptr() as _,
-                self.bufgroup.ring_entries(),
-                self.bufgroup.bgid(),
+                self.buf_ring.as_ptr() as _,
+                self.buf_ring.ring_entries(),
+                self.buf_ring.bgid(),
             )
         };
 
@@ -91,7 +91,7 @@ impl Inner {
                             format!(
                                 "buf_ring.register returned `{}`, indicating the attempted buffer group id {} was already registered",
                             e,
-                            self.bufgroup.bgid()),
+                            self.buf_ring.bgid()),
                         ));
                 }
                 _ => {
@@ -100,7 +100,7 @@ impl Inner {
                         format!(
                             "buf_ring.register returned `{}` for group id {}",
                             e,
-                            self.bufgroup.bgid()
+                            self.buf_ring.bgid()
                         ),
                     ));
                 }
@@ -140,7 +140,7 @@ impl Inner {
             }
             let index = cqe.user_data() as _;
             let op = &mut self.ops[index];
-            if op.complete(cqe, &self.bufgroup) {
+            if op.complete(cqe, &self.buf_ring) {
                 self.ops.remove(index);
             }
         }
@@ -164,7 +164,7 @@ impl Inner {
             // io-uring may set flag even encounter error.
             // so we should recycle the buf.
             if let Some(bid) = bid {
-                self.bufgroup.dropping_bid(bid);
+                self.buf_ring.dropping_bid(bid);
             }
             err
         })?;
@@ -173,7 +173,7 @@ impl Inner {
         } else {
             return Err(io::Error::new(io::ErrorKind::Other, "bid not found"));
         };
-        self.bufgroup.get_buf(len, bid)
+        self.buf_ring.get_buf(len, bid)
     }
 }
 
@@ -215,7 +215,7 @@ enum Lifecycle {
 }
 
 impl Lifecycle {
-    fn complete(&mut self, cqe: cqueue::Entry, bufgroup: &BufRing) -> bool {
+    fn complete(&mut self, cqe: cqueue::Entry, buf_ring: &BufRing) -> bool {
         match mem::replace(self, Lifecycle::Submitted) {
             s @ Lifecycle::Submitted | s @ Lifecycle::Waiting(..) => {
                 if io_uring::cqueue::more(cqe.flags()) {
@@ -232,7 +232,7 @@ impl Lifecycle {
                 if let Some(bid) = cqueue::buffer_select(cqe.flags()) {
                     // because we had dropped the opcode, if io-uring
                     // set the flag, we should recycle the buf.
-                    bufgroup.dropping_bid(bid);
+                    buf_ring.dropping_bid(bid);
                 }
                 if io_uring::cqueue::more(cqe.flags()) {
                     *self = s;
