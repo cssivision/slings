@@ -40,7 +40,7 @@ impl Clone for Driver {
 struct Inner {
     bufgroup: BufRing,
     ring: IoUring,
-    ops: Slab<State>,
+    ops: Slab<Lifecycle>,
 }
 
 impl Inner {
@@ -148,7 +148,7 @@ impl Inner {
     }
 
     fn submit_op<T>(&mut self, driver: Driver, op: T, sqe: Entry) -> io::Result<Op<T>> {
-        let key = self.ops.insert(State::Submitted);
+        let key = self.ops.insert(Lifecycle::Submitted);
         let sqe = sqe.user_data(key as u64);
         self.submit(sqe)?;
         Ok(Op {
@@ -201,7 +201,7 @@ impl Driver {
     }
 }
 
-enum State {
+enum Lifecycle {
     /// The operation has been submitted to uring and is currently in-flight
     Submitted,
     /// The submitter is waiting for the completion of the operation
@@ -214,21 +214,21 @@ enum State {
     Ignored(Box<dyn Any>),
 }
 
-impl State {
+impl Lifecycle {
     fn complete(&mut self, cqe: cqueue::Entry, bufgroup: &BufRing) -> bool {
-        match mem::replace(self, State::Submitted) {
-            s @ State::Submitted | s @ State::Waiting(..) => {
+        match mem::replace(self, Lifecycle::Submitted) {
+            s @ Lifecycle::Submitted | s @ Lifecycle::Waiting(..) => {
                 if io_uring::cqueue::more(cqe.flags()) {
-                    *self = State::CompletionList(vec![cqe.into()]);
+                    *self = Lifecycle::CompletionList(vec![cqe.into()]);
                 } else {
-                    *self = State::Completed(cqe.into());
+                    *self = Lifecycle::Completed(cqe.into());
                 }
-                if let State::Waiting(waker) = s {
+                if let Lifecycle::Waiting(waker) = s {
                     waker.wake();
                 }
                 false
             }
-            s @ State::Ignored(..) => {
+            s @ Lifecycle::Ignored(..) => {
                 if let Some(bid) = cqueue::buffer_select(cqe.flags()) {
                     // because we had dropped the opcode, if io-uring
                     // set the flag, we should recycle the buf.
@@ -241,12 +241,12 @@ impl State {
                     true
                 }
             }
-            State::CompletionList(mut list) => {
+            Lifecycle::CompletionList(mut list) => {
                 list.push(cqe.into());
-                *self = State::CompletionList(list);
+                *self = Lifecycle::CompletionList(list);
                 false
             }
-            State::Completed(..) => unreachable!("invalid state"),
+            Lifecycle::Completed(..) => unreachable!("invalid lifecycle"),
         }
     }
 }
@@ -281,8 +281,8 @@ impl<T> Op<T> {
 
     pub(crate) fn reset(&self, waker: Waker) {
         let mut inner = self.driver.inner.borrow_mut();
-        if let Some(state) = inner.ops.get_mut(self.key) {
-            *state = State::Waiting(waker);
+        if let Some(lifecycle) = inner.ops.get_mut(self.key) {
+            *lifecycle = Lifecycle::Waiting(waker);
         }
     }
 
@@ -291,26 +291,26 @@ impl<T> Op<T> {
         T: Completable,
     {
         let mut inner = self.driver.inner.borrow_mut();
-        let state = inner.ops.get_mut(self.key).expect("invalid state key");
+        let lifecycle = inner.ops.get_mut(self.key).expect("invalid key");
 
-        match mem::replace(state, State::Submitted) {
-            State::Submitted => {
-                *state = State::Waiting(cx.waker().clone());
+        match mem::replace(lifecycle, Lifecycle::Submitted) {
+            Lifecycle::Submitted => {
+                *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                 Poll::Pending
             }
-            State::Waiting(waker) => {
+            Lifecycle::Waiting(waker) => {
                 if !waker.will_wake(cx.waker()) {
-                    *state = State::Waiting(cx.waker().clone());
+                    *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                 } else {
-                    *state = State::Waiting(waker);
+                    *lifecycle = Lifecycle::Waiting(waker);
                 }
                 Poll::Pending
             }
-            State::Completed(cqe) => {
+            Lifecycle::Completed(cqe) => {
                 inner.ops.remove(self.key);
                 Poll::Ready(self.op.take().unwrap().complete(cqe))
             }
-            State::CompletionList(list) => {
+            Lifecycle::CompletionList(list) => {
                 let data = self.op.as_mut().unwrap();
                 let mut status = None;
                 let mut updated = false;
@@ -329,15 +329,15 @@ impl<T> Op<T> {
                 }
                 match status {
                     None => {
-                        *state = State::Waiting(cx.waker().clone());
+                        *lifecycle = Lifecycle::Waiting(cx.waker().clone());
                     }
                     Some(cqe) => {
-                        *state = State::Completed(cqe);
+                        *lifecycle = Lifecycle::Completed(cqe);
                     }
                 }
                 Poll::Pending
             }
-            State::Ignored(..) => unreachable!(),
+            Lifecycle::Ignored(..) => unreachable!(),
         }
     }
 }
@@ -345,21 +345,21 @@ impl<T> Op<T> {
 impl<T> Drop for Op<T> {
     fn drop(&mut self) {
         let mut inner = self.driver.inner.borrow_mut();
-        let state = match inner.ops.get_mut(self.key) {
-            Some(s) => s,
+        let lifecycle = match inner.ops.get_mut(self.key) {
+            Some(v) => v,
             None => return,
         };
 
         let mut finished = true;
-        match state {
-            State::Submitted | State::Waiting(_) => {
+        match lifecycle {
+            Lifecycle::Submitted | Lifecycle::Waiting(_) => {
                 finished = false;
-                *state = State::Ignored(Box::new(self.op.take()));
+                *lifecycle = Lifecycle::Ignored(Box::new(self.op.take()));
             }
-            State::Completed(..) => {
+            Lifecycle::Completed(..) => {
                 inner.ops.remove(self.key);
             }
-            State::CompletionList(list) => {
+            Lifecycle::CompletionList(list) => {
                 let more = if !list.is_empty() {
                     cqueue::more(list.last().unwrap().flags)
                 } else {
@@ -367,12 +367,12 @@ impl<T> Drop for Op<T> {
                 };
                 if more {
                     finished = false;
-                    *state = State::Ignored(Box::new(self.op.take()));
+                    *lifecycle = Lifecycle::Ignored(Box::new(self.op.take()));
                 } else {
                     inner.ops.remove(self.key);
                 }
             }
-            State::Ignored(..) => unreachable!(),
+            Lifecycle::Ignored(..) => unreachable!(),
         }
         if !finished {
             let sqe = opcode::AsyncCancel::new(self.key as u64)
