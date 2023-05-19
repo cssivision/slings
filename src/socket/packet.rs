@@ -119,9 +119,6 @@ impl Inner {
                 }
                 ConnectState::Connecting(op) => {
                     ready!(Pin::new(op).poll(cx))?;
-                    self.connect = ConnectState::Done;
-                }
-                ConnectState::Done => {
                     return Poll::Ready(Ok(()));
                 }
             }
@@ -158,7 +155,7 @@ impl Inner {
         loop {
             match &mut self.recv {
                 RecvState::Idle => {
-                    self.recv = RecvState::Recving(Op::recv(fd, buf.len())?);
+                    self.recv = RecvState::Recving(Op::recv(fd, buf.len() as u32)?);
                 }
                 RecvState::Recving(op) => {
                     let buf1 = ready!(Pin::new(op).poll(cx))?;
@@ -206,25 +203,16 @@ impl Inner {
                 }
                 RecvMultiState::Recving(op) => {
                     if let Some(buf1) = op.get_mut().next() {
-                        let buf1 = buf1.map_err(|err| {
-                            self.recv_multi = RecvMultiState::Done;
-                            err
-                        })?;
+                        let buf1 = buf1?;
                         let n = buf1.len();
                         buf[..n].copy_from_slice(&buf1[..n]);
                         return Poll::Ready(Ok(n));
                     }
-                    let buf1 = ready!(Pin::new(&mut *op).poll(cx)).map_err(|err| {
-                        self.recv_multi = RecvMultiState::Done;
-                        err
-                    })?;
+                    let buf1 = ready!(Pin::new(&mut *op).poll(cx))?;
                     let n = buf1.len();
                     buf[..n].copy_from_slice(&buf1[..n]);
                     self.recv_multi = RecvMultiState::Idle;
                     return Poll::Ready(Ok(n));
-                }
-                RecvMultiState::Done => {
-                    return Poll::Ready(Err(io::ErrorKind::ConnectionAborted.into()))
                 }
             }
         }
@@ -234,7 +222,6 @@ impl Inner {
 enum ConnectState {
     Idle,
     Connecting(Op<driver::Connect>),
-    Done,
 }
 
 enum SendState {
@@ -260,5 +247,4 @@ enum RecvMsgState {
 enum RecvMultiState {
     Idle,
     Recving(Op<driver::RecvMulti>),
-    Done,
 }

@@ -18,7 +18,6 @@ pub use timeout::{timeout, timeout_at, Timeout};
 enum TimeoutState {
     Idle,
     Waiting(Op<driver::Timeout>),
-    Done,
 }
 
 pub struct Timer {
@@ -79,9 +78,6 @@ impl Timer {
                         _ => {}
                     }
                     ready!(Pin::new(op).poll(cx))?;
-                    self.state = TimeoutState::Done;
-                }
-                TimeoutState::Done => {
                     self.waker = None;
                     return Poll::Ready(Ok(self.deadline));
                 }

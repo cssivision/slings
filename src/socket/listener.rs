@@ -88,7 +88,6 @@ enum AcceptState {
 enum AcceptMultiState {
     Idle,
     Accepting(Op<driver::AcceptMulti>),
-    Done,
 }
 
 impl Inner {
@@ -124,25 +123,15 @@ impl Inner {
                     self.accept_multi = AcceptMultiState::Accepting(Op::accept_multi(fd)?);
                 }
                 AcceptMultiState::Accepting(op) => {
-                    if let Some(res) = op.get_mut().next() {
-                        let fd = res.result.map(|fd| fd as i32).map_err(|err| {
-                            self.accept_multi = AcceptMultiState::Done;
-                            err
-                        })?;
+                    if let Some(fd) = op.get_mut().next() {
+                        let fd = fd?;
                         let socket = unsafe { Socket::from_raw_fd(fd) };
                         return Poll::Ready(Ok(socket));
                     }
-                    let res = ready!(Pin::new(op).poll(cx));
-                    let fd = res.result.map(|fd| fd as i32).map_err(|err| {
-                        self.accept_multi = AcceptMultiState::Done;
-                        err
-                    })?;
+                    let fd = ready!(Pin::new(op).poll(cx))?;
                     let socket = unsafe { Socket::from_raw_fd(fd) };
                     self.accept_multi = AcceptMultiState::Idle;
                     return Poll::Ready(Ok(socket));
-                }
-                AcceptMultiState::Done => {
-                    return Poll::Ready(Err(io::ErrorKind::ConnectionAborted.into()));
                 }
             }
         }

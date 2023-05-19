@@ -7,11 +7,11 @@ use io_uring::{opcode, types};
 use crate::driver::{Completable, CqeResult, Op};
 
 pub(crate) struct AcceptMulti {
-    results: VecDeque<CqeResult>,
+    results: VecDeque<io::Result<RawFd>>,
 }
 
 impl AcceptMulti {
-    pub fn next(&mut self) -> Option<CqeResult> {
+    pub fn next(&mut self) -> Option<io::Result<RawFd>> {
         self.results.pop_front()
     }
 }
@@ -31,13 +31,14 @@ impl Op<AcceptMulti> {
 }
 
 impl Completable for AcceptMulti {
-    type Output = CqeResult;
+    type Output = io::Result<RawFd>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        cqe
+        Ok(cqe.result? as i32)
     }
 
     fn update(&mut self, cqe: CqeResult) {
-        self.results.push_back(cqe);
+        let fd = cqe.result.map(|v| v as i32);
+        self.results.push_back(fd);
     }
 }

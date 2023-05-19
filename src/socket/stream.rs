@@ -95,7 +95,6 @@ struct Inner {
 enum ConnectState {
     Idle,
     Connecting(Op<driver::Connect>),
-    Done,
 }
 
 enum WriteState {
@@ -148,7 +147,6 @@ impl Read {
 enum ShutdownState {
     Idle,
     Shutdowning(Op<driver::Shutdown>),
-    Done,
 }
 
 impl Inner {
@@ -165,9 +163,6 @@ impl Inner {
                 }
                 ConnectState::Connecting(op) => {
                     ready!(Pin::new(op).poll(cx))?;
-                    self.connect = ConnectState::Done;
-                }
-                ConnectState::Done => {
                     return Poll::Ready(Ok(()));
                 }
             }
@@ -187,9 +182,6 @@ impl Inner {
                 }
                 ShutdownState::Shutdowning(op) => {
                     ready!(Pin::new(op).poll(cx))?;
-                    self.shutdown = ShutdownState::Done;
-                }
-                ShutdownState::Done => {
                     return Poll::Ready(Ok(()));
                 }
             }
