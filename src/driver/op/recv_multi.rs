@@ -4,14 +4,14 @@ use std::os::unix::io::RawFd;
 
 use io_uring::{opcode, types};
 
-use crate::driver::{Completable, CqeResult, Op, BUF_BGID};
+use crate::driver::{Buf, Completable, CqeResult, Op, BUF_BGID};
 
 pub(crate) struct RecvMulti {
-    results: VecDeque<CqeResult>,
+    results: VecDeque<io::Result<Buf>>,
 }
 
 impl RecvMulti {
-    pub fn next(&mut self) -> Option<CqeResult> {
+    pub fn next(&mut self) -> Option<io::Result<Buf>> {
         self.results.pop_front()
     }
 }
@@ -29,13 +29,21 @@ impl Op<RecvMulti> {
 }
 
 impl Completable for RecvMulti {
-    type Output = CqeResult;
+    type Output = io::Result<Buf>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        cqe
+        let _ = cqe.result?;
+        match cqe.buf {
+            Some(buf) => Ok(buf),
+            None => Err(io::Error::new(io::ErrorKind::Other, "buf not found")),
+        }
     }
 
     fn update(&mut self, cqe: CqeResult) {
-        self.results.push_back(cqe);
+        let buf = cqe.result.and_then(|_| match cqe.buf {
+            Some(buf) => Ok(buf),
+            None => Err(io::Error::new(io::ErrorKind::Other, "buf not found")),
+        });
+        self.results.push_back(buf);
     }
 }

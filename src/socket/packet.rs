@@ -205,8 +205,8 @@ impl Inner {
                     self.recv_multi = RecvMultiState::Recving(Op::recv_multi(fd)?);
                 }
                 RecvMultiState::Recving(op) => {
-                    if let Some(cqe) = op.get_mut().next() {
-                        let buf1 = op.get_buf(cqe).map_err(|err| {
+                    if let Some(buf1) = op.get_mut().next() {
+                        let buf1 = buf1.map_err(|err| {
                             self.recv_multi = RecvMultiState::Done;
                             err
                         })?;
@@ -214,8 +214,7 @@ impl Inner {
                         buf[..n].copy_from_slice(&buf1[..n]);
                         return Poll::Ready(Ok(n));
                     }
-                    let cqe = ready!(Pin::new(&mut *op).poll(cx));
-                    let buf1 = op.get_buf(cqe).map_err(|err| {
+                    let buf1 = ready!(Pin::new(&mut *op).poll(cx)).map_err(|err| {
                         self.recv_multi = RecvMultiState::Done;
                         err
                     })?;

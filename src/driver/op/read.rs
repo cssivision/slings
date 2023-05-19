@@ -4,7 +4,7 @@ use std::ptr;
 
 use io_uring::{opcode, squeue, types};
 
-use crate::driver::{Completable, CqeResult, Op, BUF_BGID};
+use crate::driver::{Buf, Completable, CqeResult, Op, BUF_BGID};
 
 pub(crate) struct Read;
 
@@ -19,9 +19,13 @@ impl Op<Read> {
 }
 
 impl Completable for Read {
-    type Output = CqeResult;
+    type Output = io::Result<Buf>;
 
     fn complete(self, cqe: CqeResult) -> Self::Output {
-        cqe
+        let _ = cqe.result?;
+        match cqe.buf {
+            Some(buf) => Ok(buf),
+            None => Err(io::Error::new(io::ErrorKind::Other, "buf not found")),
+        }
     }
 }

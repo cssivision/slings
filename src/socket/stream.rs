@@ -127,8 +127,7 @@ impl Read {
                     self.state = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE)?);
                 }
                 ReadState::Reading(op) => {
-                    let cqe = ready!(Pin::new(&mut *op).poll(cx));
-                    let buf = op.get_buf(cqe)?;
+                    let buf = ready!(Pin::new(&mut *op).poll(cx))?;
                     self.state = ReadState::Idle;
                     self.pos = 0;
                     self.buf = Some(buf);

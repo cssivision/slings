@@ -157,24 +157,6 @@ impl Inner {
             key,
         })
     }
-
-    fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
-        let bid = cqueue::buffer_select(cqe.flags);
-        let len = cqe.result.map(|v| v as usize).map_err(|err| {
-            // io-uring may set flag even encounter error.
-            // so we should recycle the buf.
-            if let Some(bid) = bid {
-                self.buf_ring.dropping_bid(bid);
-            }
-            err
-        })?;
-        let bid = if let Some(bid) = bid {
-            bid
-        } else {
-            return Err(io::Error::new(io::ErrorKind::Other, "bid not found"));
-        };
-        self.buf_ring.get_buf(len, bid)
-    }
 }
 
 impl Driver {
@@ -186,10 +168,6 @@ impl Driver {
 
     pub(crate) fn wait(&self) -> io::Result<()> {
         self.inner.borrow_mut().wait()
-    }
-
-    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
-        self.inner.borrow().get_buf(cqe)
     }
 
     pub(crate) fn with<T>(&self, f: impl FnOnce() -> T) -> T {
@@ -215,10 +193,22 @@ enum Lifecycle {
 }
 
 impl Lifecycle {
-    fn complete(&mut self, cqe: cqueue::Entry, buf_ring: &BufRing) -> bool {
+    fn complete(&mut self, entry: cqueue::Entry, buf_ring: &BufRing) -> bool {
+        let mut cqe: CqeResult = entry.into();
+        if let Some(bid) = cqueue::buffer_select(cqe.flags) {
+            match cqe.result {
+                Ok(len) => {
+                    cqe.buf = Some(buf_ring.get_buf(len as usize, bid));
+                }
+                Err(_) => {
+                    buf_ring.dropping_bid(bid);
+                }
+            }
+        }
+
         match mem::replace(self, Lifecycle::Submitted) {
             s @ Lifecycle::Submitted | s @ Lifecycle::Waiting(..) => {
-                if io_uring::cqueue::more(cqe.flags()) {
+                if cqueue::more(cqe.flags) {
                     *self = Lifecycle::CompletionList(vec![cqe.into()]);
                 } else {
                     *self = Lifecycle::Completed(cqe.into());
@@ -229,12 +219,7 @@ impl Lifecycle {
                 false
             }
             s @ Lifecycle::Ignored(..) => {
-                if let Some(bid) = cqueue::buffer_select(cqe.flags()) {
-                    // because we had dropped the opcode, if io-uring
-                    // set the flag, we should recycle the buf.
-                    buf_ring.dropping_bid(bid);
-                }
-                if io_uring::cqueue::more(cqe.flags()) {
+                if cqueue::more(cqe.flags) {
                     *self = s;
                     false
                 } else {
@@ -269,10 +254,6 @@ pub(crate) struct Op<T: 'static> {
 impl<T> Op<T> {
     pub(crate) fn get_mut(&mut self) -> &mut T {
         self.op.as_mut().unwrap()
-    }
-
-    pub(crate) fn get_buf(&self, cqe: CqeResult) -> io::Result<Buf> {
-        self.driver.get_buf(cqe)
     }
 
     pub(crate) fn submit(op: T, entry: Entry) -> io::Result<Op<T>> {
@@ -396,8 +377,9 @@ where
 
 #[allow(dead_code)]
 pub(crate) struct CqeResult {
-    pub(crate) result: io::Result<u32>,
-    pub(crate) flags: u32,
+    pub result: io::Result<u32>,
+    pub flags: u32,
+    pub buf: Option<Buf>,
 }
 
 impl From<cqueue::Entry> for CqeResult {
@@ -409,6 +391,10 @@ impl From<cqueue::Entry> for CqeResult {
         } else {
             Err(io::Error::from_raw_os_error(-res))
         };
-        CqeResult { result, flags }
+        CqeResult {
+            result,
+            flags,
+            buf: None,
+        }
     }
 }

@@ -103,7 +103,7 @@ pub(crate) struct BufRing {
 impl BufRing {
     // Returns the buffer the uring interface picked from the buf_ring for the completion result
     // represented by the res and flags.
-    pub fn get_buf(&self, len: usize, bid: u16) -> io::Result<Buf> {
+    pub fn get_buf(&self, len: usize, bid: u16) -> Buf {
         self.inner.get_buf(self.clone(), len, bid)
     }
 
@@ -329,12 +329,12 @@ impl InnerBufRing {
 
     // Returns the buffer the uring interface picked from the buf_ring for the completion result
     // represented by the res and flags.
-    fn get_buf(&self, buf_ring: BufRing, len: usize, bid: u16) -> io::Result<Buf> {
+    fn get_buf(&self, buf_ring: BufRing, len: usize, bid: u16) -> Buf {
         // This fn does the odd thing of having self as the BufRing and taking an argument that is
         // the same BufRing but wrapped in Rc<_> so the wrapped buf_ring can be passed to the
         // outgoing Buf.
         assert!(len <= self.buf_len);
-        Ok(Buf::new(buf_ring, bid, len))
+        Buf::new(buf_ring, bid, len)
     }
 }
 
