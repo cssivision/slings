@@ -121,8 +121,8 @@ impl BufRing {
         self.inner.ring_start.as_ptr()
     }
 
-    pub fn dropping_bid(&self, bid: Bid) {
-        self.inner.dropping_bid(bid);
+    pub fn drop_buf(&self, bid: Bid) {
+        self.inner.drop_buf(bid);
     }
 }
 
@@ -181,7 +181,7 @@ impl DerefMut for Buf {
 impl Drop for Buf {
     fn drop(&mut self) {
         // Add the buffer back to the buf_ring, for the kernel to reuse.
-        self.buf_ring.inner.dropping_bid(self.bid);
+        self.buf_ring.inner.drop_buf(self.bid);
     }
 }
 
@@ -301,7 +301,7 @@ impl InnerBufRing {
 
     // Safety: dropping a duplicate bid is likely to cause undefined behavior
     // as the kernel could use the same buffer for different data concurrently.
-    fn dropping_bid(&self, bid: Bid) {
+    fn drop_buf(&self, bid: Bid) {
         self.push(bid);
         self.sync();
     }

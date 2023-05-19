@@ -201,7 +201,7 @@ impl Lifecycle {
                     cqe.buf = Some(buf_ring.get_buf(len as usize, bid));
                 }
                 Err(_) => {
-                    buf_ring.dropping_bid(bid);
+                    buf_ring.drop_buf(bid);
                 }
             }
         }
