@@ -209,9 +209,9 @@ impl Lifecycle {
         match mem::replace(self, Lifecycle::Submitted) {
             s @ Lifecycle::Submitted | s @ Lifecycle::Waiting(..) => {
                 if cqueue::more(cqe.flags) {
-                    *self = Lifecycle::CompletionList(vec![cqe.into()]);
+                    *self = Lifecycle::CompletionList(vec![cqe]);
                 } else {
-                    *self = Lifecycle::Completed(cqe.into());
+                    *self = Lifecycle::Completed(cqe);
                 }
                 if let Lifecycle::Waiting(waker) = s {
                     waker.wake();
@@ -227,7 +227,7 @@ impl Lifecycle {
                 }
             }
             Lifecycle::CompletionList(mut list) => {
-                list.push(cqe.into());
+                list.push(cqe);
                 *self = Lifecycle::CompletionList(list);
                 false
             }
