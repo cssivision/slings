@@ -18,7 +18,7 @@ pub(crate) struct RecvMsg {
 impl Op<RecvMsg> {
     pub(crate) fn recvmsg(fd: RawFd, len: usize) -> io::Result<Op<RecvMsg>> {
         let mut io_slices = vec![IoSliceMut::new(unsafe {
-            std::slice::from_raw_parts_mut(ptr::null_mut(), len)
+            std::slice::from_raw_parts_mut(ptr::NonNull::dangling().as_ptr(), len)
         })];
         let socket_addr = Box::new(unsafe { SockAddr::try_init(|_, _| Ok(()))?.1 });
         let mut msghdr: Box<libc::msghdr> = Box::new(unsafe { std::mem::zeroed() });
