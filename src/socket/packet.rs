@@ -20,14 +20,7 @@ impl Packet {
     pub(crate) fn new(io: Socket) -> Packet {
         Packet {
             io,
-            inner: RefCell::new(Inner {
-                recv: RecvState::Idle,
-                recv_from: RecvMsgState::Idle,
-                send: SendState::Idle,
-                send_to: SendMsgState::Idle,
-                connect: ConnectState::Idle,
-                recv_multi: RecvMultiState::Idle,
-            }),
+            inner: RefCell::new(Inner::default()),
         }
     }
 
@@ -88,6 +81,19 @@ struct Inner {
     send_to: SendMsgState,
     connect: ConnectState,
     recv_multi: RecvMultiState,
+}
+
+impl Default for Inner {
+    fn default() -> Self {
+        Inner {
+            recv: RecvState::Idle,
+            recv_from: RecvMsgState::Idle,
+            send: SendState::Idle,
+            send_to: SendMsgState::Idle,
+            connect: ConnectState::Idle,
+            recv_multi: RecvMultiState::Idle,
+        }
+    }
 }
 
 impl Inner {

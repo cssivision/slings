@@ -195,12 +195,14 @@ enum Lifecycle {
 impl Lifecycle {
     fn complete(&mut self, entry: cqueue::Entry, buf_ring: &BufRing) -> bool {
         let mut cqe: CqeResult = entry.into();
-        if let Some(bid) = cqueue::buffer_select(cqe.flags) {
-            match cqe.result {
-                Ok(len) => {
+        match cqe.result {
+            Ok(len) => {
+                if let Some(bid) = cqueue::buffer_select(cqe.flags) {
                     cqe.buf = Some(buf_ring.get_buf(len as usize, bid));
                 }
-                Err(_) => {
+            }
+            Err(_) => {
+                if let Some(bid) = cqueue::buffer_select(cqe.flags) {
                     buf_ring.drop_buf(bid);
                 }
             }

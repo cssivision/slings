@@ -35,14 +35,14 @@ impl Completable for RecvMulti {
         let _ = cqe.result?;
         match cqe.buf {
             Some(buf) => Ok(buf),
-            None => Err(io::Error::new(io::ErrorKind::Other, "buf not found")),
+            None => Err(io::ErrorKind::UnexpectedEof.into()),
         }
     }
 
     fn update(&mut self, cqe: CqeResult) {
         let buf = cqe.result.and_then(|_| match cqe.buf {
             Some(buf) => Ok(buf),
-            None => Err(io::Error::new(io::ErrorKind::Other, "buf not found")),
+            None => Err(io::ErrorKind::UnexpectedEof.into()),
         });
         self.results.push_back(buf);
     }

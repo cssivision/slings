@@ -11,8 +11,6 @@ use super::Socket;
 use crate::buffer::Buf;
 use crate::driver::{self, Op};
 
-const DEFAULT_BUFFER_SIZE: u32 = 4096;
-
 pub(crate) struct Stream {
     inner: Inner,
     io: Socket,
@@ -22,16 +20,7 @@ impl Stream {
     pub(crate) fn new(io: Socket) -> Stream {
         Stream {
             io,
-            inner: Inner {
-                read: Read {
-                    pos: 0,
-                    buf: None,
-                    state: ReadState::Idle,
-                },
-                write: WriteState::Idle,
-                shutdown: ShutdownState::Idle,
-                connect: ConnectState::Idle,
-            },
+            inner: Inner::default(),
         }
     }
 
@@ -92,6 +81,17 @@ struct Inner {
     connect: ConnectState,
 }
 
+impl Default for Inner {
+    fn default() -> Self {
+        Inner {
+            read: Read::default(),
+            write: WriteState::Idle,
+            shutdown: ShutdownState::Idle,
+            connect: ConnectState::Idle,
+        }
+    }
+}
+
 enum ConnectState {
     Idle,
     Connecting(Op<driver::Connect>),
@@ -102,32 +102,54 @@ enum WriteState {
     Writing(Op<driver::Write>),
 }
 
-enum ReadState {
+enum RecvMultiState {
     Idle,
-    Reading(Op<driver::Read>),
+    Recving(Op<driver::RecvMulti>),
 }
 
 struct Read {
     buf: Option<Buf>,
     pos: usize,
-    state: ReadState,
+    recv_multi: RecvMultiState,
+}
+
+impl Default for Read {
+    fn default() -> Self {
+        Read {
+            pos: 0,
+            buf: None,
+            recv_multi: RecvMultiState::Idle,
+        }
+    }
 }
 
 impl Read {
     fn poll_fill_buf(&mut self, cx: &mut Context, fd: RawFd) -> Poll<io::Result<&[u8]>> {
         loop {
-            match &mut self.state {
-                ReadState::Idle => {
+            match &mut self.recv_multi {
+                RecvMultiState::Idle => {
                     if self.buf.is_some() && !self.buf.as_ref().unwrap()[self.pos..].is_empty() {
                         return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[self.pos..]));
                     }
                     self.pos = 0;
                     self.buf = None;
-                    self.state = ReadState::Reading(Op::read(fd, DEFAULT_BUFFER_SIZE)?);
+                    self.recv_multi = RecvMultiState::Recving(Op::recv_multi(fd)?);
                 }
-                ReadState::Reading(op) => {
+                RecvMultiState::Recving(op) => {
+                    if self.buf.is_some() && !self.buf.as_ref().unwrap()[self.pos..].is_empty() {
+                        return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[self.pos..]));
+                    }
+                    if let Some(buf) = op.get_mut().next() {
+                        self.buf = Some(buf?);
+                        self.pos = 0;
+                        // if length of buf is zero, means EOF.
+                        if self.buf.as_ref().unwrap().is_empty() {
+                            return Poll::Ready(Ok(&self.buf.as_ref().unwrap()[..]));
+                        }
+                        continue;
+                    }
                     let buf = ready!(Pin::new(&mut *op).poll(cx))?;
-                    self.state = ReadState::Idle;
+                    self.recv_multi = RecvMultiState::Idle;
                     self.pos = 0;
                     self.buf = Some(buf);
                     // if length of buf is zero, means EOF.

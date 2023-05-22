@@ -1,7 +1,6 @@
 mod accept;
 mod accept_multi;
 mod connect;
-mod read;
 mod recv;
 mod recv_multi;
 mod recvmsg;
@@ -14,7 +13,6 @@ mod write;
 pub(crate) use accept::Accept;
 pub(crate) use accept_multi::AcceptMulti;
 pub(crate) use connect::Connect;
-pub(crate) use read::Read;
 pub(crate) use recv::Recv;
 pub(crate) use recv_multi::RecvMulti;
 pub(crate) use recvmsg::RecvMsg;
