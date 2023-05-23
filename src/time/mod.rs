@@ -78,6 +78,7 @@ impl Timer {
                         _ => {}
                     }
                     ready!(Pin::new(op).poll(cx))?;
+                    self.state = TimeoutState::Idle;
                     self.waker = None;
                     return Poll::Ready(Ok(self.deadline));
                 }

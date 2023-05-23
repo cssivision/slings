@@ -119,6 +119,7 @@ impl Inner {
                 }
                 ConnectState::Connecting(op) => {
                     ready!(Pin::new(op).poll(cx))?;
+                    self.connect = ConnectState::Idle;
                     return Poll::Ready(Ok(()));
                 }
             }
