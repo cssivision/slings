@@ -355,7 +355,7 @@ impl<T> Drop for Op<T> {
                     inner.ops.remove(self.key);
                 }
             }
-            Lifecycle::Ignored(..) => {}
+            Lifecycle::Ignored(..) => unreachable!(),
         }
         if !finished {
             let sqe = opcode::AsyncCancel::new(self.key as u64)
