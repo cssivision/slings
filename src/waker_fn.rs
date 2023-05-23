@@ -3,7 +3,7 @@ use std::mem::{self, ManuallyDrop};
 use std::sync::Arc;
 use std::task::{RawWaker, RawWakerVTable, Waker};
 
-pub fn waker_fn<F: Fn() + Send + Sync + 'static>(f: F) -> Waker {
+pub fn waker_fn<F: Fn() + 'static>(f: F) -> Waker {
     let raw = Arc::into_raw(Arc::new(f)) as *const ();
     let vtable = &Helper::<F>::VTABLE;
     unsafe { Waker::from_raw(RawWaker::new(raw, vtable)) }
@@ -11,7 +11,7 @@ pub fn waker_fn<F: Fn() + Send + Sync + 'static>(f: F) -> Waker {
 
 struct Helper<F>(F);
 
-impl<F: Fn() + Send + Sync + 'static> Helper<F> {
+impl<F: Fn() + 'static> Helper<F> {
     const VTABLE: RawWakerVTable =
         RawWakerVTable::new(Self::clone, Self::wake, Self::wake_by_ref, Self::drop);
 

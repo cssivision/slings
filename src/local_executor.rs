@@ -31,7 +31,7 @@ pub fn spawn_local<T: 'static>(future: impl Future<Output = T> + 'static) -> Tas
         GLOBAL_QUEUE.with(|queue| queue.borrow_mut().push_back(runnable));
     };
 
-    let (runnable, task) = unsafe { async_task::spawn_unchecked(future, schedule) };
+    let (runnable, task) = async_task::spawn_local(future, schedule);
     runnable.schedule();
     task
 }
