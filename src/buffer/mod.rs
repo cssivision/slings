@@ -76,10 +76,7 @@ impl Builder {
         // larger than 2^15 anyway, so this is a good place to catch it. Here we return a unique
         // error that is more descriptive than the InvalidArg that would come from the interface.
         if b.ring_entries > (1 << 15) {
-            return Err(io::Error::new(
-                io::ErrorKind::Other,
-                "ring_entries exceeded 32768",
-            ));
+            return Err(io::Error::other("ring_entries exceeded 32768"));
         }
 
         // Requirement of the interface is the ring entries is a power of two, making its and our

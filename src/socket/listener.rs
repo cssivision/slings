@@ -125,17 +125,15 @@ impl Inner {
                 }
                 AcceptMultiState::Accepting(op) => {
                     if let Some(res) = op.get_mut().next() {
-                        let fd = res.result.map(|fd| fd as i32).map_err(|err| {
+                        let fd = res.result.map(|fd| fd as i32).inspect_err(|_| {
                             self.accept_multi = AcceptMultiState::Done;
-                            err
                         })?;
                         let socket = unsafe { Socket::from_raw_fd(fd) };
                         return Poll::Ready(Ok(socket));
                     }
                     let res = ready!(Pin::new(op).poll(cx));
-                    let fd = res.result.map(|fd| fd as i32).map_err(|err| {
+                    let fd = res.result.map(|fd| fd as i32).inspect_err(|_| {
                         self.accept_multi = AcceptMultiState::Done;
-                        err
                     })?;
                     let socket = unsafe { Socket::from_raw_fd(fd) };
                     self.accept_multi = AcceptMultiState::Idle;

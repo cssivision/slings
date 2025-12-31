@@ -25,7 +25,7 @@ impl Completable for Read {
         let _ = cqe.result?;
         match cqe.buf {
             Some(buf) => Ok(buf),
-            None => Err(io::Error::new(io::ErrorKind::Other, "buf not found")),
+            None => Err(io::Error::other("buf not found")),
         }
     }
 }

@@ -61,9 +61,9 @@ impl TcpListener {
                 Ok(())
             })?
         };
-        let socket_addr = addr.as_socket().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::Other, "Could not get socket IP address")
-        })?;
+        let socket_addr = addr
+            .as_socket()
+            .ok_or_else(|| io::Error::other("Could not get socket IP address"))?;
         Poll::Ready(Ok((socket.into(), socket_addr)))
     }
 

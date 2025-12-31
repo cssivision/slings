@@ -206,9 +206,8 @@ impl Inner {
                 }
                 RecvMultiState::Recving(op) => {
                     if let Some(buf1) = op.get_mut().next() {
-                        let buf1 = buf1.map_err(|err| {
+                        let buf1 = buf1.inspect_err(|_| {
                             self.recv_multi = RecvMultiState::Done;
-                            err
                         })?;
                         let n = buf1.len();
                         buf[..n].copy_from_slice(&buf1[..n]);
