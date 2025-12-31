@@ -124,7 +124,7 @@ where
     f(&mut storage as *mut _ as *mut _, &mut len)?;
     let (_, addr) = unsafe {
         SockAddr::try_init(move |addr_storage, length| {
-            *addr_storage = storage.to_owned();
+            *(addr_storage as *mut _) = storage;
             *length = len;
             Ok(())
         })?

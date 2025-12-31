@@ -65,10 +65,11 @@ impl Inner {
         // it is unregistered. The backing store is an AnonymousMmap which remains valid until it
         // is dropped which in this case, is when Self is dropped.
         let res = unsafe {
-            self.ring.submitter().register_buf_ring(
+            self.ring.submitter().register_buf_ring_with_flags(
                 self.buf_ring.as_ptr() as _,
                 self.buf_ring.ring_entries(),
                 self.buf_ring.bgid(),
+                0,
             )
         };
 

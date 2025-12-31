@@ -55,8 +55,8 @@ impl TcpListener {
     pub fn poll_accept(&self, cx: &mut Context<'_>) -> Poll<io::Result<(TcpStream, SocketAddr)>> {
         let (socket, socketaddr) = ready!(self.inner.poll_accept(cx))?;
         let (_, addr) = unsafe {
-            SockAddr::try_init(move |addr_storage, len| {
-                *addr_storage = socketaddr.storage.to_owned();
+            SockAddr::try_init(move |storage, len| {
+                *(storage as *mut _) = socketaddr.storage;
                 *len = socketaddr.socklen;
                 Ok(())
             })?

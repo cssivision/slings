@@ -15,7 +15,7 @@ impl Op<Connect> {
         let connect = Connect { sock_addr };
         let entry = opcode::Connect::new(
             types::Fd(fd),
-            connect.sock_addr.as_ptr(),
+            connect.sock_addr.as_ptr() as *const _,
             connect.sock_addr.len(),
         )
         .build();
